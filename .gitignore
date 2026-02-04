@@ -54,6 +54,14 @@ data/dose_maps/*.raw
 # IAEA phase space files (binarios y NPZ pesados)
 data/IAEA/*.IAEAphsp
 data/IAEA/*.npz
+data/IAEA/*.root
+
+# Salidas de simulación
+output_*/
+output_*/*.mhd
+output_*/*.raw
+output_*/*.txt
+output_*/*.json
 
 # Resultados
 results/*
