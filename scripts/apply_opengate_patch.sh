@@ -62,9 +62,13 @@ fi
 echo "🔧 Aplicando patch..."
 
 # Usar Python para hacer el patch de forma precisa
-python3 << 'PYTHON_PATCH'
+python3 - "$PHSP_FILE" << 'PYTHON_PATCH'
 import sys
 from pathlib import Path
+
+if len(sys.argv) < 2:
+    print("❌ ERROR: Falta ruta de phspsources.py")
+    sys.exit(1)
 
 phsp_file = Path(sys.argv[1])
 content = phsp_file.read_text()
@@ -99,44 +103,6 @@ else:
     sys.exit(1)
 
 PYTHON_PATCH
-
-# Pasar el archivo como argumento al script de Python
-python3 -c "
-import sys
-from pathlib import Path
-
-phsp_file = Path('$PHSP_FILE')
-content = phsp_file.read_text()
-
-search_pattern = '''        self.batch = self.root_file.arrays(
-            entry_start=self.current_index,
-            entry_stop=self.current_index + current_batch_size,
-            library=\"numpy\",
-        )
-        batch = self.batch'''
-
-replacement = '''        self.batch = self.root_file.arrays(
-            entry_start=self.current_index,
-            entry_stop=self.current_index + current_batch_size,
-            library=\"numpy\",
-        )
-        batch = self.batch
-        # If uproot returns a structured numpy array, convert to dict of arrays
-        if isinstance(batch, np.ndarray) and batch.dtype.names is not None:
-            batch = {name: batch[name] for name in batch.dtype.names}
-            self.batch = batch'''
-
-if search_pattern in content:
-    content = content.replace(search_pattern, replacement)
-    phsp_file.write_text(content)
-    print('✅ Patch aplicado correctamente en línea ~143')
-    sys.exit(0)
-else:
-    print('⚠️  WARNING: No se encontró el patrón exacto')
-    print('   Archivo:', phsp_file)
-    print('   Puede que la versión de OpenGate sea diferente')
-    sys.exit(1)
-"
 
 PATCH_STATUS=$?
 

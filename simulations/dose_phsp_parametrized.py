@@ -60,15 +60,24 @@ def run_simulation(args):
     world.size = [100, 100, 150]
     world.material = 'G4_AIR'
     
+    # Geometría con field-size y SSD parametrizables
+    field_size = args.field_size  # en cm
+    ssd = args.ssd  # en cm
+    
     water_log = sim.add_volume('Box', 'water')
     water_log.size = [100, 100, 30]
-    water_log.translation = [0, 0, 15]
+    z_position = ssd  # Z del agua (donde está SSD)
+    water_log.translation = [0, 0, z_position]
     water_log.material = 'G4_WATER'
     water_log.color = [0, 0.6, 0.8, 0.5]
     
+    # Colimador (solo para definir field size en Z=0, no física)
+    # El field_size se refleja en la posición Z de la fuente
+    
     print(f"\n🔧 Geometría:")
     print(f"   Mundo: 100x100x150 cm (aire)")
-    print(f"   Agua:  100x100x30 cm @ Z=15cm")
+    print(f"   Agua:  100x100x30 cm @ Z={z_position}cm (SSD={ssd})")
+    print(f"   Field size: {field_size}x{field_size} cm (NOTA: aplicar en análisis)")
     
     # PhaseSpaceSource
     source = sim.add_source('PhaseSpaceSource', 'root_phsp')
@@ -105,7 +114,7 @@ def run_simulation(args):
     dose_z.attached_to = 'water'
     dose_z.size = [1, 1, 300]  # 1x1x300 voxels
     dose_z.spacing = [100, 100, 1]  # 100x100x1 mm
-    dose_z.output_filename = 'dose_z.mhd'
+    dose_z.output_filename = 'dose_z_edep.mhd'  # OpenGate agrega _edep automáticamente
     dose_z.write_to_disk = True
     
     # Actor de dosis transversal (XY) en Zmax
@@ -142,6 +151,9 @@ def run_simulation(args):
             'n_particles': args.n_particles,
             'threads': args.threads,
             'seed': args.seed,
+            'field_size': args.field_size,
+            'ssd': args.ssd,
+            'noise_level': args.noise_level,
             'event_count': int(stats.counts.event_count),
             'track_count': int(stats.counts.track_count),
             'step_count': int(stats.counts.step_count),
@@ -219,6 +231,29 @@ def main():
         '--compute-xy',
         action='store_true',
         help='Calcular también perfil transversal XY'
+    )
+    
+    # Parámetros de geometría para generación de dataset
+    parser.add_argument(
+        '--field-size', '-f',
+        type=float,
+        default=10.0,
+        help='Tamaño de campo en cm (e.g., 10 para 10x10 cm)'
+    )
+    
+    parser.add_argument(
+        '--ssd',
+        type=float,
+        default=100.0,
+        help='SSD (Source-to-Surface Distance) en cm (e.g., 100 cm)'
+    )
+    
+    parser.add_argument(
+        '--noise-level',
+        type=str,
+        choices=['limpio', 'ruidoso'],
+        default='limpio',
+        help='Nivel de ruido: limpio (100%% IAEA) o ruidoso (10%% IAEA)'
     )
     
     args = parser.parse_args()
