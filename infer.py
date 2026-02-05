@@ -128,7 +128,7 @@ def main():
         # Visualizar
         title = f"Sample {sample_idx + 1} | PSNR={metrics['PSNR']:.2f}dB | Corr={metrics['Corr']:.4f}"
         out_path = args.output_dir / f"sample_{sample_idx + 1:02d}.png"
-        inp_vis = inp.squeeze(0).numpy()
+        inp_vis = inp.squeeze().cpu().numpy()  # Eliminar batch y canal: (1,1,Z,Y,X) -> (Z,Y,X)
         plot_slices(inp_vis, pred, tgt, out_path, title)
     
     # Resumen
