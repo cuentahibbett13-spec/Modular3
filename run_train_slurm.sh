@@ -30,11 +30,11 @@ python train.py \
   --data-root "$DATA_ROOT" \
   --output-dir runs/denoising \
   --epochs 50 \
-  --batch-size 2 \
+  --batch-size 8 \
   --patch-size 64,64,64 \
   --lr 1e-4 \
-  --num-workers 4 \
-  --cache-size 8 \
+  --num-workers 8 \
+  --cache-size 16 \
   --device auto \
   --amp \
   --val-every 1 \

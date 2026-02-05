@@ -20,6 +20,9 @@ class Sample:
 
 
 def _read_mhd(path: Path) -> np.ndarray:
+    npy_path = path.with_suffix(".npy").with_name("dose_edep.npy")
+    if npy_path.exists():
+        return np.load(str(npy_path))
     img = sitk.ReadImage(str(path))
     arr = sitk.GetArrayFromImage(img)  # (Z, Y, X)
     return arr.astype(np.float32, copy=False)
