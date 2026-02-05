@@ -13,7 +13,10 @@
 set -e
 
 cd "$(dirname "$0")"
-mkdir -p logs runs
+
+# Crear directorios si no existen y tenemos permisos
+mkdir -p logs 2>/dev/null || true
+mkdir -p runs 2>/dev/null || true
 
 # Ruta del dataset en el cluster
 DATA_ROOT="/lustre/home/acastaneda/Fernando/Modular3/dataset_pilot"
