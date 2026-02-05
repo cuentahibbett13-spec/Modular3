@@ -12,9 +12,8 @@
 # Exit on error
 set -e
 
-# Activate conda environment with PyTorch ROCm
-source /opt/conda/etc/profile.d/conda.sh
-conda activate /lustre/scratch/acastaneda/.conda/envs/pytorch_rocm
+# Activate virtual environment with PyTorch ROCm
+source /lustre/home/acastaneda/Fernando/Modular3/.venv/bin/activate
 
 # Set working directory
 WORK_DIR="/lustre/home/acastaneda/Fernando/Modular3"
