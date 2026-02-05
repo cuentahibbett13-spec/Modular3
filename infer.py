@@ -99,7 +99,7 @@ def main():
     val_ds = DosePairDataset(
         root_dir=args.data_root,
         split="val",
-        patch_size=64,  # Usar mismo patch size que en entrenamiento
+        patch_size=(64, 64, 64),  # Usar mismo patch size que en entrenamiento
         cache_size=0,
         normalize=True,
         seed=4321,
