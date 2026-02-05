@@ -14,7 +14,6 @@ from matplotlib.gridspec import GridSpec
 import json
 import time
 
-from training.dataset import DosePairDataset
 from training.model import UNet3D
 
 
@@ -44,6 +43,10 @@ def analyze_inference_speed(model, val_ds, device, num_samples=5):
             elapsed = (t1 - t0) * 1000  # ms
             times.append(elapsed)
             print(f"Sample {sample_idx + 1}: {elapsed:.2f} ms")
+            
+            # Liberar memoria
+            del inp, pred, batch
+            torch.cuda.empty_cache() if torch.cuda.is_available() else None
     
     times = np.array(times)
     print(f"\nPromedio: {times.mean():.2f} ± {times.std():.2f} ms")
@@ -52,29 +55,10 @@ def analyze_inference_speed(model, val_ds, device, num_samples=5):
     return times
 
 
-def analyze_memory_usage(model, val_ds, device):
+def analyze_memory_usage(model, device):
     """Analiza uso de memoria."""
     print("\n💾 ANÁLISIS DE MEMORIA")
     print("=" * 50)
-    
-    if torch.cuda.is_available():
-        torch.cuda.reset_peak_memory_stats()
-        torch.cuda.empty_cache()
-    
-    batch = val_ds[0]
-    inp = batch["input"].unsqueeze(0).to(device)
-    
-    if torch.cuda.is_available():
-        torch.cuda.synchronize()
-        torch.cuda.reset_peak_memory_stats()
-    
-    with torch.no_grad():
-        pred = model(inp)
-    
-    if torch.cuda.is_available():
-        torch.cuda.synchronize()
-        peak_mem = torch.cuda.max_memory_allocated() / 1024 / 1024  # MB
-        print(f"Pico de memoria GPU: {peak_mem:.2f} MB")
     
     # Parámetros del modelo
     total_params = sum(p.numel() for p in model.parameters())
@@ -85,124 +69,74 @@ def analyze_memory_usage(model, val_ds, device):
     print(f"Parámetros entrenables: {trainable_params:,.0f}")
     print(f"Tamaño del modelo: {model_size:.2f} MB")
     
-    return {"peak_memory": peak_mem if torch.cuda.is_available() else 0,
-            "total_params": total_params,
+    if torch.cuda.is_available():
+        print(f"GPU: {torch.cuda.get_device_name(0)}")
+        print(f"VRAM total: {torch.cuda.get_device_properties(0).total_memory / 1024 / 1024 / 1024:.2f} GB")
+    
+    return {"total_params": total_params,
             "model_size": model_size}
 
 
-def compute_metrics(pred: np.ndarray, target: np.ndarray) -> dict:
-    """Calcula métricas de calidad."""
-    mse = np.mean((pred - target) ** 2)
-    mae = np.mean(np.abs(pred - target))
+def plot_metrics_summary(metrics_file: Path, output_dir: Path):
+    """Grafica resumen de métricas desde el archivo JSON."""
+    if not metrics_file.exists():
+        print(f"⚠️  {metrics_file} no encontrado, saltando gráficos")
+        return
     
-    # PSNR
-    max_val = target.max()
-    psnr = 20 * np.log10(max_val / np.sqrt(mse)) if mse > 0 else float('inf')
-    
-    # Correlación
-    pred_flat = pred.flatten()
-    target_flat = target.flatten()
-    corr = np.corrcoef(pred_flat, target_flat)[0, 1]
-    
-    return {
-        'MSE': mse,
-        'MAE': mae,
-        'PSNR': psnr,
-        'Corr': corr,
-    }
-
-
-def plot_metrics_summary(metrics_list, output_dir: Path):
-    """Grafica resumen de métricas."""
-    metrics_array = {k: [m[k] for m in metrics_list] for k in metrics_list[0].keys()}
-    
-    fig = plt.figure(figsize=(14, 8))
-    gs = GridSpec(2, 2, figure=fig, hspace=0.3, wspace=0.3)
-    
-    # MSE
-    ax = fig.add_subplot(gs[0, 0])
-    ax.bar(range(len(metrics_array['MSE'])), metrics_array['MSE'], color='steelblue', alpha=0.7)
-    ax.set_xlabel('Sample')
-    ax.set_ylabel('MSE')
-    ax.set_title('Mean Squared Error por Sample')
-    ax.grid(axis='y', alpha=0.3)
-    
-    # MAE
-    ax = fig.add_subplot(gs[0, 1])
-    ax.bar(range(len(metrics_array['MAE'])), metrics_array['MAE'], color='coral', alpha=0.7)
-    ax.set_xlabel('Sample')
-    ax.set_ylabel('MAE')
-    ax.set_title('Mean Absolute Error por Sample')
-    ax.grid(axis='y', alpha=0.3)
-    
-    # PSNR
-    ax = fig.add_subplot(gs[1, 0])
-    ax.bar(range(len(metrics_array['PSNR'])), metrics_array['PSNR'], color='seagreen', alpha=0.7)
-    ax.set_xlabel('Sample')
-    ax.set_ylabel('PSNR (dB)')
-    ax.set_title('Peak Signal-to-Noise Ratio por Sample')
-    ax.grid(axis='y', alpha=0.3)
-    
-    # Correlación
-    ax = fig.add_subplot(gs[1, 1])
-    ax.bar(range(len(metrics_array['Corr'])), metrics_array['Corr'], color='mediumpurple', alpha=0.7)
-    ax.set_xlabel('Sample')
-    ax.set_ylabel('Correlación')
-    ax.set_title('Correlación de Pearson por Sample')
-    ax.set_ylim([0.9, 1.0])
-    ax.grid(axis='y', alpha=0.3)
-    
-    fig.suptitle('Resumen de Métricas de Denoising', fontsize=14, fontweight='bold')
-    plt.savefig(output_dir / 'metrics_summary.png', dpi=100, bbox_inches='tight')
-    plt.close()
-    
-    # Estadísticas
-    print("\n📊 ESTADÍSTICAS DE CALIDAD")
-    print("=" * 50)
-    for metric_name, values in metrics_array.items():
-        print(f"{metric_name:8s}: {np.mean(values):8.4f} ± {np.std(values):.4f}")
-
-
-def plot_dose_distribution(val_ds, output_dir: Path, num_samples=5):
-    """Analiza distribución de dosis en input vs target."""
-    print("\n📈 ANÁLISIS DE DISTRIBUCIÓN")
-    print("=" * 50)
-    
-    inputs_all = []
-    targets_all = []
-    
-    for idx in range(min(num_samples, len(val_ds))):
-        batch = val_ds[idx]
-        inp = batch["input"].numpy().flatten()
-        tgt = batch["target"].numpy().flatten()
+    try:
+        with open(metrics_file) as f:
+            metrics_list = json.load(f)
         
-        inputs_all.extend(inp[inp > 0])
-        targets_all.extend(tgt[tgt > 0])
-    
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
-    
-    # Histogramas
-    axes[0].hist(inputs_all, bins=50, alpha=0.7, label='Input', color='red')
-    axes[0].hist(targets_all, bins=50, alpha=0.7, label='Target', color='green')
-    axes[0].set_xlabel('Dosis (a.u.)')
-    axes[0].set_ylabel('Frecuencia')
-    axes[0].set_title('Distribución de Dosis')
-    axes[0].legend()
-    axes[0].set_yscale('log')
-    
-    # Box plots
-    bp_data = [inputs_all, targets_all]
-    axes[1].boxplot(bp_data, labels=['Input', 'Target'])
-    axes[1].set_ylabel('Dosis (a.u.)')
-    axes[1].set_title('Box Plot de Dosis')
-    axes[1].grid(axis='y', alpha=0.3)
-    
-    plt.tight_layout()
-    plt.savefig(output_dir / 'dose_distribution.png', dpi=100, bbox_inches='tight')
-    plt.close()
-    
-    print(f"Input  - Mean: {np.mean(inputs_all):.4f}, Std: {np.std(inputs_all):.4f}")
-    print(f"Target - Mean: {np.mean(targets_all):.4f}, Std: {np.std(targets_all):.4f}")
+        metrics_array = {k: [m[k] for m in metrics_list] for k in metrics_list[0].keys()}
+        
+        fig = plt.figure(figsize=(14, 8))
+        gs = GridSpec(2, 2, figure=fig, hspace=0.3, wspace=0.3)
+        
+        # MSE
+        ax = fig.add_subplot(gs[0, 0])
+        ax.bar(range(len(metrics_array['MSE'])), metrics_array['MSE'], color='steelblue', alpha=0.7)
+        ax.set_xlabel('Sample')
+        ax.set_ylabel('MSE')
+        ax.set_title('Mean Squared Error por Sample')
+        ax.grid(axis='y', alpha=0.3)
+        
+        # MAE
+        ax = fig.add_subplot(gs[0, 1])
+        ax.bar(range(len(metrics_array['MAE'])), metrics_array['MAE'], color='coral', alpha=0.7)
+        ax.set_xlabel('Sample')
+        ax.set_ylabel('MAE')
+        ax.set_title('Mean Absolute Error por Sample')
+        ax.grid(axis='y', alpha=0.3)
+        
+        # PSNR
+        ax = fig.add_subplot(gs[1, 0])
+        ax.bar(range(len(metrics_array['PSNR'])), metrics_array['PSNR'], color='seagreen', alpha=0.7)
+        ax.set_xlabel('Sample')
+        ax.set_ylabel('PSNR (dB)')
+        ax.set_title('Peak Signal-to-Noise Ratio por Sample')
+        ax.grid(axis='y', alpha=0.3)
+        
+        # Correlación
+        ax = fig.add_subplot(gs[1, 1])
+        ax.bar(range(len(metrics_array['Corr'])), metrics_array['Corr'], color='mediumpurple', alpha=0.7)
+        ax.set_xlabel('Sample')
+        ax.set_ylabel('Correlación')
+        ax.set_title('Correlación de Pearson por Sample')
+        ax.set_ylim([0.9, 1.0])
+        ax.grid(axis='y', alpha=0.3)
+        
+        fig.suptitle('Resumen de Métricas de Denoising', fontsize=14, fontweight='bold')
+        plt.savefig(output_dir / 'metrics_summary.png', dpi=100, bbox_inches='tight')
+        plt.close()
+        
+        # Estadísticas
+        print("\n📊 ESTADÍSTICAS DE CALIDAD")
+        print("=" * 50)
+        for metric_name, values in metrics_array.items():
+            print(f"{metric_name:8s}: {np.mean(values):8.4f} ± {np.std(values):.4f}")
+        
+    except Exception as e:
+        print(f"⚠️  Error al procesar métricas: {e}")
 
 
 def main():
@@ -224,33 +158,41 @@ def main():
     print(f"🔧 Device: {device}")
     
     # Load model
+    print(f"📦 Cargando modelo desde {args.checkpoint}")
     model = UNet3D(in_ch=1, out_ch=1, base_ch=32).to(device)
     ckpt = torch.load(str(args.checkpoint), map_location=device)
     model.load_state_dict(ckpt["model"])
     model.eval()
+    print("✅ Modelo cargado")
     
-    # Load dataset
-    val_ds = DosePairDataset(
-        root_dir=args.data_root,
-        split="val",
-        patch_size=(64, 64, 64),
-        cache_size=0,
-        normalize=True,
-        seed=4321,
-    )
-    print(f"✅ Dataset: {len(val_ds)} samples")
+    # Load dataset (con manejo de errores)
+    try:
+        from training.dataset import DosePairDataset
+        val_ds = DosePairDataset(
+            root_dir=args.data_root,
+            split="val",
+            patch_size=(64, 64, 64),
+            cache_size=0,
+            normalize=True,
+            seed=4321,
+        )
+        print(f"✅ Dataset: {len(val_ds)} samples")
+        
+        # Análisis
+        analyze_memory_usage(model, device)
+        times = analyze_inference_speed(model, val_ds, device, args.num_samples)
+        
+    except Exception as e:
+        print(f"⚠️  Error con dataset: {e}")
+        # Continuar solo con análisis de modelo
+        analyze_memory_usage(model, device)
     
-    # Análisis
-    analyze_memory_usage(model, val_ds, device)
-    times = analyze_inference_speed(model, val_ds, device, args.num_samples)
-    plot_dose_distribution(val_ds, args.output_dir, args.num_samples)
-    
-    # Cargar métricas si existen
+    # Cargar y graficar métricas si existen
     metrics_file = Path("results_inference/metrics.json")
     if metrics_file.exists():
-        with open(metrics_file) as f:
-            metrics_list = json.load(f)
-        plot_metrics_summary(metrics_list, args.output_dir)
+        plot_metrics_summary(metrics_file, args.output_dir)
+    else:
+        print(f"⚠️  {metrics_file} no encontrado")
     
     print("\n✅ Análisis completado")
     print(f"📁 Resultados guardados en: {args.output_dir}")
@@ -258,3 +200,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
