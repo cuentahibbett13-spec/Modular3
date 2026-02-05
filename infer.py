@@ -29,7 +29,7 @@ def infer_batch(model, inp: torch.Tensor, device: torch.device) -> np.ndarray:
     with torch.no_grad():
         inp = inp.to(device)
         pred = model(inp)
-        pred = pred.cpu().squeeze(0).numpy()  # (1, Z, Y, X) -> (Z, Y, X)
+        pred = pred.cpu().squeeze().numpy()  # (1, 1, Z, Y, X) -> (Z, Y, X)
     return pred
 
 
