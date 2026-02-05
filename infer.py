@@ -8,6 +8,8 @@ from pathlib import Path
 import argparse
 import numpy as np
 import torch
+import matplotlib
+matplotlib.use('Agg')  # Backend no interactivo para cluster
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 import json
