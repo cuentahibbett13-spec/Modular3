@@ -101,7 +101,11 @@ class DosePairDataset(Dataset):
             if not target_mhd.exists():
                 continue
             for level in self.levels:
-                input_mhd = pair_dir / level / "dose_edep.mhd"
+                # Buscar en dos lugares: nuevo formato (input_1M.mhd) o antiguo (input_1M/dose_edep.mhd)
+                input_mhd = pair_dir / f"{level}.mhd"
+                if not input_mhd.exists():
+                    input_mhd = pair_dir / level / "dose_edep.mhd"
+                
                 if input_mhd.exists():
                     self.samples.append(Sample(input_mhd, target_mhd, pair_id, level, target_id))
 
