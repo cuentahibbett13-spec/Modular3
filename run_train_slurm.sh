@@ -30,7 +30,7 @@ python train.py \
   --data-root "$DATA_ROOT" \
   --output-dir runs/denoising \
   --epochs 50 \
-  --batch-size 8 \
+  --batch-size 4 \
   --patch-size 64,64,64 \
   --lr 1e-4 \
   --num-workers 1 \
