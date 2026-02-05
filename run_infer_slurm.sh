@@ -31,7 +31,7 @@ echo "Working directory: $(pwd)"
 echo "========================================="
 
 # Run inference on all validation samples
-python infer.py \
+python infer_robust.py \
     --data-root "$WORK_DIR/dataset_pilot" \
     --checkpoint "$WORK_DIR/runs/denoising/best.pt" \
     --output-dir "$WORK_DIR/results_inference" \
