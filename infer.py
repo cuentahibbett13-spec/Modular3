@@ -10,6 +10,7 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
+import json
 
 from training.dataset import DosePairDataset
 from training.model import UNet3D
@@ -144,7 +145,13 @@ def main():
     print(f"MAE promedio:  {avg_mae:.6f}")
     print(f"PSNR promedio: {avg_psnr:.2f} dB")
     print(f"Corr promedio: {avg_corr:.4f}")
-    print(f"\n✅ Resultados guardados en {args.output_dir}")
+    
+    # Guardar métricas en JSON
+    metrics_file = args.output_dir / "metrics.json"
+    with open(metrics_file, "w") as f:
+        json.dump(metrics_list, f, indent=2)
+    print(f"✅ Métricas guardadas en {metrics_file}")
+    print(f"✅ Resultados guardados en {args.output_dir}")
 
 
 if __name__ == "__main__":
