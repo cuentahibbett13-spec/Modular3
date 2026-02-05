@@ -33,8 +33,8 @@ python train.py \
   --batch-size 8 \
   --patch-size 64,64,64 \
   --lr 1e-4 \
-  --num-workers 8 \
-  --cache-size 16 \
+  --num-workers 1 \
+  --cache-size 32 \
   --device auto \
   --amp \
   --val-every 1 \
