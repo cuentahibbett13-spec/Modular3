@@ -4,10 +4,17 @@ Advanced Weighted Training with:
 1. Weighted Sampling (50% core, 50% periphery)
 2. Dynamic Loss proportional to dose level
 """
-# ---- MIOpen: cache en espacio de usuario (ANTES de importar torch) ----
+# ---- MIOpen: redirección COMPLETA de caché a espacio de usuario ----
 import os
-os.environ["MIOPEN_USER_DB_PATH"] = os.path.expanduser("~/fer/miopen_cache")
-os.makedirs(os.environ["MIOPEN_USER_DB_PATH"], exist_ok=True)
+from pathlib import Path
+
+miopen_cache_dir = Path.home() / ".cache" / "miopen"
+miopen_cache_dir.mkdir(parents=True, exist_ok=True)
+
+os.environ["MIOPEN_USER_DB_PATH"]        = str(miopen_cache_dir)
+os.environ["MIOPEN_CUSTOM_CACHE_DIR"]    = str(miopen_cache_dir)
+os.environ["MIOPEN_DEBUG_DISABLE_FIND_DB"] = "0"   # Permitir Find DB (acelera)
+os.environ["TMPDIR"]                     = str(miopen_cache_dir)  # Evitar /tmp del sistema
 # -----------------------------------------------------------------
 
 import torch
