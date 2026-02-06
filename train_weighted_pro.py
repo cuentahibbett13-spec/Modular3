@@ -379,14 +379,15 @@ def train_epoch(model, dataloader, optimizer, loss_fn, device, epoch):
         target_data = batch['target'].to(device, non_blocking=True)
         max_dose = batch['max_dose'].to(device, non_blocking=True)
         
-        # Normalize on GPU
+        # Normalize on GPU (data → [0, 1])
         max_dose_view = max_dose.view(-1, 1, 1, 1, 1) + 1e-8
         input_data = input_data / max_dose_view
         target_data = target_data / max_dose_view
         
         optimizer.zero_grad()
         output = model(input_data)
-        loss, loss_stats = loss_fn(output, target_data, max_dose.max())
+        # max_dose=1.0 porque target YA está normalizado a [0,1]
+        loss, loss_stats = loss_fn(output, target_data, max_dose=1.0)
         
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -417,13 +418,14 @@ def validate(model, dataloader, loss_fn, device, epoch):
             target_data = batch['target'].to(device, non_blocking=True)
             max_dose = batch['max_dose'].to(device, non_blocking=True)
             
-            # Normalize on GPU
+            # Normalize on GPU (data → [0, 1])
             max_dose_view = max_dose.view(-1, 1, 1, 1, 1) + 1e-8
             input_data = input_data / max_dose_view
             target_data = target_data / max_dose_view
             
             output = model(input_data)
-            loss, _ = loss_fn(output, target_data, max_dose.max())
+            # max_dose=1.0 porque target YA está normalizado a [0,1]
+            loss, _ = loss_fn(output, target_data, max_dose=1.0)
             total_loss += loss.item()
             
             pbar.set_postfix(loss=f'{loss.item():.6f}')
