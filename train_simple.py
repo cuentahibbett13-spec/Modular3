@@ -36,8 +36,8 @@ OUTPUT_DIR     = Path("runs/denoising_v2")       # Donde se guardan los checkpoi
 INPUT_LEVELS   = ["input_1M", "input_2M", "input_5M", "input_10M"]
 
 # Hiperparámetros
-BATCH_SIZE     = 1                # Tamaño de batch (reducido: 128³ es más grande)
-PATCH_SIZE     = (128, 128, 128)  # Tamaño de los patches 3D (aumentado para ver contexto global)
+BATCH_SIZE     = 1                # Tamaño de batch (1 = máximo contexto)
+PATCH_SIZE     = (128, 128, 128)  # Tamaño de los patches 3D
 NUM_EPOCHS     = 50               # Número de épocas
 LEARNING_RATE  = 1e-3             # Learning rate
 DEVICE         = "auto"           # "auto", "cuda" o "cpu"
@@ -219,8 +219,8 @@ def main():
     assert len(train_ds) > 0, "❌ No hay datos de entrenamiento"
     assert len(val_ds) > 0, "❌ No hay datos de validación"
     
-    train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
-    val_loader   = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=0)
+    train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=0, pin_memory=True)
+    val_loader   = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=0, pin_memory=True)
     
     # Modelo
     model = UNet3D(base_ch=32).to(device)
