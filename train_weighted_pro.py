@@ -26,11 +26,11 @@ torch.backends.cudnn.enabled = False
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
-BATCH_SIZE = 16
-NUM_EPOCHS = 100
+BATCH_SIZE = 4  # Reducido de 16 para caber en memoria
+NUM_EPOCHS = 50  # Reducido para pruebas más rápidas
 LEARNING_RATE = 1e-3
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-BASE_CHANNELS = 32
+BASE_CHANNELS = 16  # Reducido de 32 para menor uso de memoria
 
 # Rutas (relativas, como en train_fullvol.py)
 DATASET_ROOT = Path("dataset_pilot")
