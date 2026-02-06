@@ -6,6 +6,15 @@ SCRIPT DE ENTRENAMIENTO SIMPLE - Denoising Monte Carlo
 Revisa las variables al inicio antes de ejecutar.
 """
 
+# ---- Fix MIOpen/ROCm temp directory (ANTES de importar torch) ----
+import os
+_tmp = f"/tmp/miopen_{os.environ.get('USER', 'user')}"
+os.makedirs(_tmp, exist_ok=True)
+os.environ.setdefault("MIOPEN_USER_DB_PATH", _tmp)
+os.environ.setdefault("MIOPEN_CACHE_DIR", _tmp)
+os.environ.setdefault("TMPDIR", "/tmp")
+# -----------------------------------------------------------------
+
 import numpy as np
 import torch
 import torch.nn as nn
