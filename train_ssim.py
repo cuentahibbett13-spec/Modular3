@@ -21,54 +21,14 @@ import SimpleITK as sitk
 
 torch.backends.cudnn.enabled = False
 
-# =============================================================
-# SSIM Loss
-# =============================================================
-class SSIMLoss(nn.Module):
-    """Structural Similarity Index Loss (1 - SSIM)"""
-    def __init__(self, window_size=11, sigma=1.5):
-        super().__init__()
-        self.window_size = window_size
-        self.sigma = sigma
-        self.create_window()
-    
-    def create_window(self):
-        gauss = torch.Tensor([np.exp(-(x - self.window_size//2)**2 / (2*self.sigma**2)) 
-                             for x in range(self.window_size)])
-        gauss = gauss / gauss.sum()
-        self.register_buffer('window', gauss.unsqueeze(1).unsqueeze(1).unsqueeze(1))
-    
-    def forward(self, x, y):
-        """SSIM between x and y (both shape [batch, 1, d, h, w], values in [0,1])"""
-        # Constantes
-        C1 = 0.01 ** 2
-        C2 = 0.03 ** 2
-        
-        # Convolucionar con ventana gaussiana (x ya es [batch, 1, d, h, w])
-        mu_x = F.conv3d(x, self.window.to(x.device), padding=self.window_size//2)
-        mu_y = F.conv3d(y, self.window.to(x.device), padding=self.window_size//2)
-        
-        mu_x_sq = mu_x.pow(2)
-        mu_y_sq = mu_y.pow(2)
-        mu_xy = mu_x * mu_y
-        
-        sigma_x_sq = F.conv3d(x ** 2, self.window.to(x.device), padding=self.window_size//2) - mu_x_sq
-        sigma_y_sq = F.conv3d(y ** 2, self.window.to(x.device), padding=self.window_size//2) - mu_y_sq
-        sigma_xy = F.conv3d(x * y, self.window.to(x.device), padding=self.window_size//2) - mu_xy
-        
-        # SSIM
-        ssim_map = ((2*mu_xy + C1)*(2*sigma_xy + C2)) / ((mu_x_sq + mu_y_sq + C1)*(sigma_x_sq + sigma_y_sq + C2))
-        return 1 - ssim_map.mean()
-
-
-# =============================================================
+=============================================================
 # ⚙️ VARIABLES DE CONFIGURACIÓN
 # =============================================================
 
 DATASET_ROOT   = Path("dataset_pilot")
 TRAIN_DIR      = DATASET_ROOT / "train"
 VAL_DIR        = DATASET_ROOT / "val"
-OUTPUT_DIR     = Path("runs/denoising_ssim")
+OUTPUT_DIR     = Path("runs/denoising_l1")
 
 INPUT_LEVELS   = ["input_1M", "input_2M", "input_5M", "input_10M"]
 
@@ -77,7 +37,6 @@ PATCH_SIZE     = (64, 64, 64)
 NUM_EPOCHS     = 100
 LEARNING_RATE  = 1e-3
 DEVICE         = "auto"
-USE_AMP        = True
 
 # =============================================================
 
@@ -214,9 +173,7 @@ def main():
         print(f"🔧 GPU:         {torch.cuda.get_device_name(0)}")
     print(f"📊 Batch size:  {BATCH_SIZE}")
     print(f"📊 Patch size:  {PATCH_SIZE}")
-    print(f"📊 Epochs:      {NUM_EPOCHS}")
-    print(f"📊 Loss:        SSIM (prioriza estructura)")
-    print("=" * 60)
+    print("\n🚀 Iniciando entrenamiento...\n")
     
     assert TRAIN_DIR.exists(), f"❌ No existe: {TRAIN_DIR}"
     assert VAL_DIR.exists(), f"❌ No existe: {VAL_DIR}"
@@ -234,12 +191,11 @@ def main():
     
     model = UNet3D(base_ch=32).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-    loss_fn = SSIMLoss()
+    loss_fn = nn.L1Loss()  # L1 Loss (prioriza estructura sobre valores absolutos)
     
     total_params = sum(p.numel() for p in model.parameters())
     print(f"\n🧠 Modelo: {total_params:,} parámetros")
     
-    scaler = torch.cuda.amp.GradScaler() if USE_AMP else None
     best_val_loss = float("inf")
     
     print("\n🚀 Iniciando entrenamiento...\n")
@@ -255,18 +211,10 @@ def main():
             
             optimizer.zero_grad()
             
-            if USE_AMP:
-                with torch.cuda.amp.autocast():
-                    pred = model(inp)
-                    loss = loss_fn(pred, tgt)
-                scaler.scale(loss).backward()
-                scaler.step(optimizer)
-                scaler.update()
-            else:
-                pred = model(inp)
-                loss = loss_fn(pred, tgt)
-                loss.backward()
-                optimizer.step()
+            pred = model(inp)
+            loss = loss_fn(pred, tgt)
+            loss.backward()
+            optimizer.step()
             
             train_losses.append(loss.item())
         
@@ -281,13 +229,8 @@ def main():
                 inp = inp.to(device)
                 tgt = tgt.to(device)
                 
-                if USE_AMP:
-                    with torch.cuda.amp.autocast():
-                        pred = model(inp)
-                        loss = loss_fn(pred, tgt)
-                else:
-                    pred = model(inp)
-                    loss = loss_fn(pred, tgt)
+                pred = model(inp)
+                loss = loss_fn(pred, tgt)
                 
                 val_losses.append(loss.item())
         
