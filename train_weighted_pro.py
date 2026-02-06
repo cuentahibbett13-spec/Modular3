@@ -4,10 +4,10 @@ Advanced Weighted Training with:
 1. Weighted Sampling (50% core, 50% periphery)
 2. Dynamic Loss proportional to dose level
 """
-# ---- Desactivar MIOpen (ANTES de importar torch) ----
+# ---- MIOpen: cache en espacio de usuario (ANTES de importar torch) ----
 import os
-os.environ["MIOPEN_DEBUG_DISABLE_FIND_DB"] = "1"
-torch_backends_cudnn_enabled = False
+os.environ["MIOPEN_USER_DB_PATH"] = os.path.expanduser("~/fer/miopen_cache")
+os.makedirs(os.environ["MIOPEN_USER_DB_PATH"], exist_ok=True)
 # -----------------------------------------------------------------
 
 import torch
@@ -21,8 +21,9 @@ from datetime import datetime
 import sys
 from tqdm import tqdm
 
-# Desactivar MIOpen después de importar torch
-torch.backends.cudnn.enabled = False
+# ⚡ Activar MIOpen + benchmark (busca algoritmo óptimo una vez al inicio)
+torch.backends.cudnn.enabled = True
+torch.backends.cudnn.benchmark = True
 
 # ============================================================================
 # CONFIGURATION
@@ -369,7 +370,7 @@ class WeightedDoseSampler(torch.utils.data.Sampler):
 # ============================================================================
 # TRAINING LOOP
 # ============================================================================
-def train_epoch(model, dataloader, optimizer, loss_fn, device, epoch):
+def train_epoch(model, dataloader, optimizer, loss_fn, device, epoch, scaler=None):
     model.train()
     total_loss = 0
     stats = {'high': 0, 'mid': 0, 'low': 0}
@@ -386,16 +387,19 @@ def train_epoch(model, dataloader, optimizer, loss_fn, device, epoch):
         input_data = input_data / max_dose_view
         target_data = target_data / max_dose_view
         
-        # ⚡ Mixed Precision (2x faster on MI210)
+        optimizer.zero_grad()
+        
+        # ⚡ Mixed Precision forward (fp16 compute, fp32 accuracy)
         with torch.cuda.amp.autocast():
             output = model(input_data)
             loss, loss_stats = loss_fn(output, target_data, max_dose.max())
         
-        # Backward pass
-        optimizer.zero_grad()
-        loss.backward()
+        # ⚡ Scaled backward pass (prevents fp16 underflow)
+        scaler.scale(loss).backward()
+        scaler.unscale_(optimizer)
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        optimizer.step()
+        scaler.step(optimizer)
+        scaler.update()
         
         total_loss += loss.item()
         stats['high'] += loss_stats['high_dose_count']
@@ -504,6 +508,9 @@ def main():
         weight_min=0.1  # Penalize errors in high dose, tolerate in low dose
     )
     
+    # ⚡ GradScaler para AMP completo (escala gradientes en fp16)
+    scaler = torch.cuda.amp.GradScaler()
+    
     # Training loop
     print(f"\n[5/5] Starting training...")
     history = {
@@ -521,7 +528,7 @@ def main():
         print(f"{'='*70}")
         
         # Train
-        train_loss, train_stats = train_epoch(model, train_loader, optimizer, loss_fn, DEVICE, epoch)
+        train_loss, train_stats = train_epoch(model, train_loader, optimizer, loss_fn, DEVICE, epoch, scaler)
         
         # Validate
         val_loss = validate(model, val_loader, loss_fn, DEVICE, epoch)
