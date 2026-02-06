@@ -37,8 +37,8 @@ INPUT_LEVELS   = ["input_1M", "input_2M", "input_5M", "input_10M"]
 
 # Hiperparámetros
 BATCH_SIZE     = 2                # Tamaño de batch
-PATCH_SIZE     = (64, 64, 64)     # Tamaño de los patches 3D (stable, kernels HIP no fallan)
-NUM_EPOCHS     = 100              # AUMENTADO: compensamos parches pequeños con más épocas
+PATCH_SIZE     = (64, 64, 64)     # Tamaño de los patches 3D
+NUM_EPOCHS     = 100              # Número de épocas (aumentado para compensar)
 LEARNING_RATE  = 1e-3             # Learning rate
 DEVICE         = "auto"           # "auto", "cuda" o "cpu"
 
@@ -122,11 +122,14 @@ class SimpleDoseDataset(Dataset):
         inp = read_volume(input_path)
         tgt = read_volume(target_path)
         
-        # Normalizar por el máximo del target
-        max_val = float(np.max(tgt))
-        if max_val > 0:
-            inp = inp / max_val
-            tgt = tgt / max_val
+        # 🔑 CLAVE: Normalizar AMBOS por máximo del INPUT (no del target)
+        # Así el modelo aprende a amplificar: input → target amplificado
+        max_input = float(np.max(inp))
+        if max_input > 0:
+            inp = inp / max_input
+            tgt = tgt / max_input
+        else:
+            return None, None
         
         # Crop
         if self.is_train:
@@ -204,6 +207,7 @@ def main():
     print(f"📊 Patch size:  {PATCH_SIZE}")
     print(f"📊 Epochs:      {NUM_EPOCHS}")
     print(f"📊 LR:          {LEARNING_RATE}")
+    print(f"🔑 Normalización: por MAX(INPUT), no MAX(TARGET)")
     print("=" * 60)
     
     # Verificar que existen las carpetas
