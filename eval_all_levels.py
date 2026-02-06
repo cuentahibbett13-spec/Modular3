@@ -20,7 +20,7 @@ MODEL_PATH = Path("runs/denoising_v2/best.pt")
 DATASET_ROOT = Path("dataset_pilot")
 VAL_DIR = DATASET_ROOT / "val"
 INPUT_LEVELS = ["input_1M", "input_2M", "input_5M", "input_10M"]
-PATCH_SIZE = (128, 128, 128)  # Mismo que se usó en training actual
+PATCH_SIZE = (64, 64, 64)  # Mismo que se usó en training actual
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 print(f"🔧 Device: {DEVICE}")

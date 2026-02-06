@@ -36,9 +36,9 @@ OUTPUT_DIR     = Path("runs/denoising_v2")       # Donde se guardan los checkpoi
 INPUT_LEVELS   = ["input_1M", "input_2M", "input_5M", "input_10M"]
 
 # Hiperparámetros
-BATCH_SIZE     = 1                # Tamaño de batch (1 = máximo contexto)
-PATCH_SIZE     = (128, 128, 128)  # Tamaño de los patches 3D
-NUM_EPOCHS     = 50               # Número de épocas
+BATCH_SIZE     = 2                # Tamaño de batch
+PATCH_SIZE     = (64, 64, 64)     # Tamaño de los patches 3D (stable, kernels HIP no fallan)
+NUM_EPOCHS     = 100              # AUMENTADO: compensamos parches pequeños con más épocas
 LEARNING_RATE  = 1e-3             # Learning rate
 DEVICE         = "auto"           # "auto", "cuda" o "cpu"
 
