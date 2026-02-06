@@ -18,8 +18,23 @@ from scipy import stats
 torch.backends.cudnn.enabled = False
 
 # ---- Configuración ----
-MODEL_PATH = Path("runs/denoising_fullvol/best.pt")
-DATASET_ROOT = Path("dataset_pilot")
+# Buscar modelo: primero fullvol, luego v2
+MODEL_PATHS = [
+    Path("runs/denoising_fullvol/best.pt"),
+    Path("runs/denoising_v2/best.pt"),
+]
+
+MODEL_PATH = None
+for p in MODEL_PATHS:
+    if p.exists():
+        MODEL_PATH = p
+        break
+
+if MODEL_PATH is None:
+    print(f"❌ No existe ningún modelo en:")
+    for p in MODEL_PATHS:
+        print(f"   - {p}")
+    exit(1)
 VAL_DIR = DATASET_ROOT / "val"
 INPUT_LEVELS = ["input_1M", "input_2M", "input_5M", "input_10M"]
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -81,12 +96,13 @@ def main():
     print("=" * 70)
     
     # Cargar modelo
-    assert MODEL_PATH.exists(), f"❌ No existe: {MODEL_PATH}"
+    assert MODEL_PATH is not None, "❌ No existe modelo"
     model = UNet3D(base_ch=16).to(DEVICE)
     ckpt = torch.load(str(MODEL_PATH), map_location=DEVICE)
     model.load_state_dict(ckpt["model"])
     model.eval()
-    print(f"✅ Modelo cargado\n")
+    print(f"✅ Modelo cargado: {MODEL_PATH}")
+    print(f"   Epoch: {ckpt['epoch']}, Val Loss: {ckpt['val_loss']:.6f}\n")
     
     # Recolectar datos
     input_maxs = []
