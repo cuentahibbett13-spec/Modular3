@@ -4,6 +4,12 @@ Advanced Weighted Training with:
 1. Weighted Sampling (50% core, 50% periphery)
 2. Dynamic Loss proportional to dose level
 """
+# ---- Desactivar MIOpen (ANTES de importar torch) ----
+import os
+os.environ["MIOPEN_DEBUG_DISABLE_FIND_DB"] = "1"
+torch_backends_cudnn_enabled = False
+# -----------------------------------------------------------------
+
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
@@ -13,6 +19,9 @@ from pathlib import Path
 import json
 from datetime import datetime
 import sys
+
+# Desactivar MIOpen después de importar torch
+torch.backends.cudnn.enabled = False
 
 # ============================================================================
 # CONFIGURATION
