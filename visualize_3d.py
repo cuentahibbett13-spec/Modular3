@@ -221,7 +221,87 @@ def plot_3d_comparison_complete(input_vol, pred_vol, target_vol, threshold_pct=0
     plt.tight_layout()
     return fig
 
-def plot_single_isosurface(ax, volume, threshold_pct, title, color):
+def plot_multiple_2d_slices(input_vol, pred_vol, target_vol, z_slices):
+    """Muestra cortes 2D lado a lado para detectar desfases dimensionales"""
+    n_slices = len(z_slices)
+    fig, axes = plt.subplots(n_slices, 3, figsize=(15, 5*n_slices))
+    
+    if n_slices == 1:
+        axes = axes.reshape(1, -1)
+    
+    max_dose = target_vol.max()
+    
+    for i, z in enumerate(z_slices):
+        if z >= input_vol.shape[0]:
+            continue
+        
+        # Input
+        im0 = axes[i, 0].imshow(input_vol[z, :, :], cmap='hot', vmin=0, vmax=max_dose)
+        axes[i, 0].set_title(f'Input @ z={z}')
+        axes[i, 0].set_ylabel('Y')
+        plt.colorbar(im0, ax=axes[i, 0])
+        
+        # Predicción
+        im1 = axes[i, 1].imshow(pred_vol[z, :, :], cmap='hot', vmin=0, vmax=max_dose)
+        axes[i, 1].set_title(f'Predicción @ z={z}')
+        axes[i, 1].set_ylabel('Y')
+        plt.colorbar(im1, ax=axes[i, 1])
+        
+        # GT
+        im2 = axes[i, 2].imshow(target_vol[z, :, :], cmap='hot', vmin=0, vmax=max_dose)
+        axes[i, 2].set_title(f'Ground Truth @ z={z}')
+        axes[i, 2].set_ylabel('Y')
+        plt.colorbar(im2, ax=axes[i, 2])
+    
+    plt.tight_layout()
+    return fig
+
+def plot_2d_slice_comparison(input_vol, pred_vol, target_vol, z_slice):
+    """Genera comparación 2D de un slice específico: Input | Pred | GT | Errores"""
+    max_dose = target_vol.max()
+    
+    fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+    
+    # Slice 2D
+    input_slice = input_vol[z_slice, :, :]
+    pred_slice = pred_vol[z_slice, :, :]
+    target_slice = target_vol[z_slice, :, :]
+    
+    # Row 1: Input, Pred, GT
+    im0 = axes[0, 0].imshow(input_slice, cmap='hot')
+    axes[0, 0].set_title(f'Input (z={z_slice})')
+    plt.colorbar(im0, ax=axes[0, 0])
+    
+    im1 = axes[0, 1].imshow(pred_slice, cmap='hot')
+    axes[0, 1].set_title(f'Predicción (z={z_slice})')
+    plt.colorbar(im1, ax=axes[0, 1])
+    
+    im2 = axes[0, 2].imshow(target_slice, cmap='hot')
+    axes[0, 2].set_title(f'Ground Truth (z={z_slice})')
+    plt.colorbar(im2, ax=axes[0, 2])
+    
+    # Row 2: Input-GT, Pred-GT, Error%
+    diff_input = np.abs(input_slice - target_slice)
+    im3 = axes[1, 0].imshow(diff_input, cmap='viridis')
+    axes[1, 0].set_title(f'Input - GT (z={z_slice})')
+    plt.colorbar(im3, ax=axes[1, 0])
+    
+    diff_pred = np.abs(pred_slice - target_slice)
+    im4 = axes[1, 1].imshow(diff_pred, cmap='viridis')
+    axes[1, 1].set_title(f'Pred - GT (z={z_slice})')
+    plt.colorbar(im4, ax=axes[1, 1])
+    
+    error_pct = np.zeros_like(target_slice, dtype=np.float32)
+    mask = target_slice > 0.01 * max_dose
+    error_pct[mask] = 100.0 * np.abs(pred_slice[mask] - target_slice[mask]) / (target_slice[mask] + 1e-8)
+    im5 = axes[1, 2].imshow(error_pct, cmap='RdYlGn_r', vmin=0, vmax=30)
+    axes[1, 2].set_title(f'Error % (z={z_slice})')
+    plt.colorbar(im5, ax=axes[1, 2])
+    
+    plt.tight_layout()
+    return fig
+
+
     """Helper para subplot individual"""
     max_val = volume.max()
     threshold = threshold_pct * max_val
@@ -289,6 +369,26 @@ def main():
     fig.savefig(output_path, dpi=150, bbox_inches='tight')
     plt.close(fig)
     print(f"    Guardado: {output_path}")
+    
+    # Cortes 2D en grilla para ver desfases dimensionales
+    print(f"\n  Generando cortes 2D en grilla (6 slices)...")
+    z_slices = [25, 50, 75, 100, 125, 150]
+    fig = plot_multiple_2d_slices(input_vol, pred_vol, target_vol, z_slices)
+    output_path = OUTPUT_DIR / f"{PAIR_TO_VISUALIZE}_{INPUT_LEVEL}_2d_slices_detail.png"
+    fig.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f"    Guardado: {output_path}")
+    
+    # Cortes 2D en z específicos para ver errores locales
+    print(f"\n  Generando cortes 2D de comparación...")
+    for z_slice in [15, 75, 150]:
+        if z_slice >= input_vol.shape[0]:
+            continue
+        fig = plot_2d_slice_comparison(input_vol, pred_vol, target_vol, z_slice)
+        output_path = OUTPUT_DIR / f"{PAIR_TO_VISUALIZE}_{INPUT_LEVEL}_2d_slice_z{z_slice}.png"
+        fig.savefig(output_path, dpi=150, bbox_inches='tight')
+        plt.close(fig)
+        print(f"    Guardado: {output_path}")
     
     print(f"\n{'='*70}")
     print(f"✓ Visualizaciones guardadas en: {OUTPUT_DIR}")

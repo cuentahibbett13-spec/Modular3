@@ -28,10 +28,10 @@ torch.backends.cudnn.enabled = False
 # ============================================================================
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 BASE_CHANNELS = 16
-MODEL_PATH = Path("runs/denoising_weighted_pro/best_model.pt")
+MODEL_PATH = Path("runs/denoising_v2_residual/best_model.pt")
 DATASET_ROOT = Path("dataset_pilot")
 VAL_DIR = DATASET_ROOT / "val"
-EVAL_DIR = Path("runs/denoising_weighted_pro/evaluation")
+EVAL_DIR = Path("runs/denoising_v2_residual/evaluation")
 EVAL_DIR.mkdir(parents=True, exist_ok=True)
 INPUT_LEVELS = ["input_1M", "input_2M", "input_5M", "input_10M"]
 PATCH_SIZE = 96
@@ -42,9 +42,9 @@ print(f"✓ Model: {MODEL_PATH}")
 print(f"✓ Output: {EVAL_DIR}")
 
 # ============================================================================
-# 3D U-NET (idéntica al training)
+# 3D U-NET RESIDUAL (idéntica al training v2)
 # ============================================================================
-class UNet3D(nn.Module):
+class ResidualUNet3D(nn.Module):
     def __init__(self, in_channels=1, out_channels=1, base_channels=32):
         super().__init__()
         self.enc1 = self._conv_block(in_channels, base_channels)
@@ -78,7 +78,8 @@ class UNet3D(nn.Module):
         d3 = self.dec3(torch.cat([self.upconv3(b), e3], dim=1))
         d2 = self.dec2(torch.cat([self.upconv2(d3), e2], dim=1))
         d1 = self.dec1(torch.cat([self.upconv1(d2), e1], dim=1))
-        return self.final(d1)
+        residual = self.final(d1)
+        return x + residual  # RESIDUAL
 
 # ============================================================================
 # SLIDING WINDOW INFERENCE
@@ -204,6 +205,12 @@ def calc_dose_metrics(pred, target, max_dose):
 # ============================================================================
 def plot_comparison(input_vol, pred_vol, target_vol, z_slice, save_path, pair_name, level):
     """4 paneles: Input | Predicción | GT | Error Relativo"""
+    # DEBUG: Verificar dimensiones de los slices
+    print(f"      DEBUG plot_comparison - slice {z_slice}:")
+    print(f"        input_vol[{z_slice}].shape = {input_vol[z_slice].shape}")
+    print(f"        pred_vol[{z_slice}].shape = {pred_vol[z_slice].shape}")
+    print(f"        target_vol[{z_slice}].shape = {target_vol[z_slice].shape}")
+    
     fig, axes = plt.subplots(2, 3, figsize=(18, 12))
     
     vmax = target_vol[z_slice].max()
@@ -304,7 +311,7 @@ def main():
     
     # Cargar modelo
     print("\n[1/3] Cargando modelo...")
-    model = UNet3D(base_channels=BASE_CHANNELS).to(DEVICE)
+    model = ResidualUNet3D(base_channels=BASE_CHANNELS).to(DEVICE)
     checkpoint = torch.load(MODEL_PATH, map_location=DEVICE)
     model.load_state_dict(checkpoint['model_state'])
     model.eval()
@@ -348,6 +355,9 @@ def main():
             pred_norm = sliding_window_inference(model, input_norm, DEVICE, PATCH_SIZE, OVERLAP)
             pred_vol = pred_norm * max_dose  # Desnormalizar
             
+            # DEBUG: Verificar dimensiones
+            print(f"\n      DEBUG - Shapes: input={input_vol.shape}, pred={pred_vol.shape}, target={target_vol.shape}")
+            
             # Métricas globales
             psnr_input = calc_psnr(input_vol, target_vol, max_dose)
             psnr_pred = calc_psnr(pred_vol, target_vol, max_dose)
@@ -372,14 +382,23 @@ def main():
             print(f"PSNR: {psnr_input:.1f} → {psnr_pred:.1f} dB (gain: +{psnr_pred-psnr_input:.1f} dB)")
             
             # Visualizaciones
+            # DEBUG: Verificar dimensiones ANTES de plot_comparison
+            print(f"\n      DEBUG PRE-PLOT:")
+            print(f"        input_vol.shape = {input_vol.shape}")
+            print(f"        pred_vol.shape = {pred_vol.shape}")
+            print(f"        target_vol.shape = {target_vol.shape}")
+            print(f"        max values: input={input_vol.max():.4f}, pred={pred_vol.max():.4f}, target={target_vol.max():.4f}")
+            
             # Slice central (core) 
             z_core = target_vol.shape[0] // 2
             # Buscar slice con más dosis
             pdd = np.array([target_vol[z].max() for z in range(target_vol.shape[0])])
             z_max = int(np.argmax(pdd))
+            print(f"        z_core = {z_core}, z_max = {z_max}")
             
             for z_slice, z_name in [(z_core, "core"), (z_max, "peak")]:
                 save_path = EVAL_DIR / f"{key}_z{z_slice}_{z_name}.png"
+                print(f"        Plotting slice {z_slice} ({z_name})...")
                 plot_comparison(input_vol, pred_vol, target_vol, z_slice, save_path, pair_dir.name, level)
             
             # PDD
