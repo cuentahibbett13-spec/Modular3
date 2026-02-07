@@ -217,15 +217,15 @@ def plot_comparison(input_vol, pred_vol, target_vol, z_slice, save_path, pair_na
     vmin = 0
     
     # Row 1: Volúmenes
-    im0 = axes[0, 0].imshow(input_vol[z_slice], cmap='hot', vmin=vmin, vmax=vmax)
+    im0 = axes[0, 0].imshow(input_vol[z_slice], cmap='hot', vmin=vmin, vmax=vmax, aspect='auto')
     axes[0, 0].set_title(f'Input ({level})', fontsize=12)
     plt.colorbar(im0, ax=axes[0, 0], fraction=0.046)
     
-    im1 = axes[0, 1].imshow(pred_vol[z_slice], cmap='hot', vmin=vmin, vmax=vmax)
+    im1 = axes[0, 1].imshow(pred_vol[z_slice], cmap='hot', vmin=vmin, vmax=vmax, aspect='auto')
     axes[0, 1].set_title('Predicción (U-Net)', fontsize=12)
     plt.colorbar(im1, ax=axes[0, 1], fraction=0.046)
     
-    im2 = axes[0, 2].imshow(target_vol[z_slice], cmap='hot', vmin=vmin, vmax=vmax)
+    im2 = axes[0, 2].imshow(target_vol[z_slice], cmap='hot', vmin=vmin, vmax=vmax, aspect='auto')
     axes[0, 2].set_title('Ground Truth (29.4M)', fontsize=12)
     plt.colorbar(im2, ax=axes[0, 2], fraction=0.046)
     
@@ -234,11 +234,11 @@ def plot_comparison(input_vol, pred_vol, target_vol, z_slice, save_path, pair_na
     diff_pred = np.abs(pred_vol[z_slice] - target_vol[z_slice])
     diff_max = max(diff_input.max(), diff_pred.max(), 1e-10)
     
-    im3 = axes[1, 0].imshow(diff_input, cmap='viridis', vmin=0, vmax=diff_max)
+    im3 = axes[1, 0].imshow(diff_input, cmap='viridis', vmin=0, vmax=diff_max, aspect='auto')
     axes[1, 0].set_title(f'|Input - GT|', fontsize=12)
     plt.colorbar(im3, ax=axes[1, 0], fraction=0.046)
     
-    im4 = axes[1, 1].imshow(diff_pred, cmap='viridis', vmin=0, vmax=diff_max)
+    im4 = axes[1, 1].imshow(diff_pred, cmap='viridis', vmin=0, vmax=diff_max, aspect='auto')
     axes[1, 1].set_title(f'|Pred - GT|', fontsize=12)
     plt.colorbar(im4, ax=axes[1, 1], fraction=0.046)
     
@@ -248,7 +248,7 @@ def plot_comparison(input_vol, pred_vol, target_vol, z_slice, save_path, pair_na
     if mask.any():
         rel_err[mask] = np.abs(pred_vol[z_slice][mask] - target_vol[z_slice][mask]) / target_vol[z_slice][mask] * 100
     
-    im5 = axes[1, 2].imshow(rel_err, cmap='RdYlGn_r', vmin=0, vmax=20)
+    im5 = axes[1, 2].imshow(rel_err, cmap='RdYlGn_r', vmin=0, vmax=20, aspect='auto')
     axes[1, 2].set_title('Error Relativo % (pred vs GT)', fontsize=12)
     plt.colorbar(im5, ax=axes[1, 2], fraction=0.046, label='%')
     
