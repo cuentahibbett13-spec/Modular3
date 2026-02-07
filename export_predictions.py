@@ -19,72 +19,45 @@ PATCH_SIZE = 96
 OVERLAP = 16
 
 # ============================================================================
-# MODEL (same as evaluate_model.py)
+# MODEL (same as train_v2.py)
 # ============================================================================
-class UNet3D(torch.nn.Module):
+class ResidualUNet3D(torch.nn.Module):
+    """U-Net que predice el RESIDUAL (corrección) en vez de la dosis absoluta."""
     def __init__(self, in_channels=1, out_channels=1, base_channels=16):
         super().__init__()
-        
-        # Encoder
         self.enc1 = self._conv_block(in_channels, base_channels)
+        self.pool1 = torch.nn.MaxPool3d(2)
         self.enc2 = self._conv_block(base_channels, base_channels * 2)
+        self.pool2 = torch.nn.MaxPool3d(2)
         self.enc3 = self._conv_block(base_channels * 2, base_channels * 4)
-        
-        # Bottleneck
+        self.pool3 = torch.nn.MaxPool3d(2)
         self.bottleneck = self._conv_block(base_channels * 4, base_channels * 8)
-        
-        # Decoder
         self.upconv3 = torch.nn.ConvTranspose3d(base_channels * 8, base_channels * 4, 2, stride=2)
         self.dec3 = self._conv_block(base_channels * 8, base_channels * 4)
-        
         self.upconv2 = torch.nn.ConvTranspose3d(base_channels * 4, base_channels * 2, 2, stride=2)
         self.dec2 = self._conv_block(base_channels * 4, base_channels * 2)
-        
         self.upconv1 = torch.nn.ConvTranspose3d(base_channels * 2, base_channels, 2, stride=2)
         self.dec1 = self._conv_block(base_channels * 2, base_channels)
-        
-        self.out_conv = torch.nn.Conv3d(base_channels, out_channels, 1)
-        
-        self.pool = torch.nn.MaxPool3d(2)
-    
+        self.final = torch.nn.Conv3d(base_channels, out_channels, 1)
+
     def _conv_block(self, in_ch, out_ch):
         return torch.nn.Sequential(
             torch.nn.Conv3d(in_ch, out_ch, 3, padding=1),
-            torch.nn.BatchNorm3d(out_ch),
             torch.nn.ReLU(inplace=True),
             torch.nn.Conv3d(out_ch, out_ch, 3, padding=1),
-            torch.nn.BatchNorm3d(out_ch),
             torch.nn.ReLU(inplace=True)
         )
-    
+
     def forward(self, x):
-        input_x = x
-        
-        # Encoder
         e1 = self.enc1(x)
-        e2 = self.enc2(self.pool(e1))
-        e3 = self.enc3(self.pool(e2))
-        
-        # Bottleneck
-        b = self.bottleneck(self.pool(e3))
-        
-        # Decoder
-        d3 = self.upconv3(b)
-        d3 = torch.cat([d3, e3], dim=1)
-        d3 = self.dec3(d3)
-        
-        d2 = self.upconv2(d3)
-        d2 = torch.cat([d2, e2], dim=1)
-        d2 = self.dec2(d2)
-        
-        d1 = self.upconv1(d2)
-        d1 = torch.cat([d1, e1], dim=1)
-        d1 = self.dec1(d1)
-        
-        residual = self.out_conv(d1)
-        output = input_x + residual
-        
-        return output
+        e2 = self.enc2(self.pool1(e1))
+        e3 = self.enc3(self.pool2(e2))
+        b = self.bottleneck(self.pool3(e3))
+        d3 = self.dec3(torch.cat([self.upconv3(b), e3], dim=1))
+        d2 = self.dec2(torch.cat([self.upconv2(d3), e2], dim=1))
+        d1 = self.dec1(torch.cat([self.upconv1(d2), e1], dim=1))
+        residual = self.final(d1)
+        return x + residual
 
 def sliding_window_inference(model, volume, patch_size=96, overlap=16):
     """Sliding window inference with overlap averaging"""
@@ -121,7 +94,7 @@ def main():
     # Load model
     print("\n[1/3] Cargando modelo...")
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = UNet3D(base_channels=16).to(device)
+    model = ResidualUNet3D(base_channels=16).to(device)
     checkpoint = torch.load(MODEL_PATH, map_location=device)
     
     # Handle different checkpoint formats
