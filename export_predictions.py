@@ -129,8 +129,16 @@ def main():
     for pair_dir in pairs:
         pair_name = pair_dir.name
         
-        # Load target
-        target_path = list(pair_dir.glob("target_*.mhd"))[0]
+        # Load target (find .mhd file that's not an input)
+        all_mhd = list(pair_dir.glob("*.mhd"))
+        input_files = [f for f in all_mhd if 'input' in f.name.lower()]
+        target_files = [f for f in all_mhd if 'input' not in f.name.lower()]
+        
+        if not target_files:
+            print(f"\n  ⚠ Skipping {pair_name}: no target file found")
+            continue
+        
+        target_path = target_files[0]
         target_sitk = sitk.ReadImage(str(target_path))
         target_vol = sitk.GetArrayFromImage(target_sitk)
         max_dose = target_vol.max()
@@ -138,8 +146,11 @@ def main():
         print(f"\n  {pair_name} (max_dose={max_dose:.1f})")
         
         # Process each input level
-        input_files = sorted(pair_dir.glob("input_*.mhd"))
-        for input_path in input_files:
+        if not input_files:
+            print(f"    ⚠ No input files found")
+            continue
+            
+        for input_path in sorted(input_files):
             level = input_path.stem.split('_')[-1]  # e.g., "1M", "2M"
             
             # Load input
