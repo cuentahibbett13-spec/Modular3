@@ -101,10 +101,14 @@ class ExponentialWeightedLoss(nn.Module):
     """
     Función de peso del artículo de dose denoising:
     
-        W(Y) = exp[ -α * (1 - 0.5*(pred + target) / max(target)) ]
+        W(Y) = exp[ -α * (1 - 0.5*(pred_abs + target_abs) / max(target_abs)) ]
     
-    - Cuando avg(pred,target) ≈ max(target):  W ≈ exp(0) = 1.0  (peso máximo)
-    - Cuando avg(pred,target) ≈ 0:            W ≈ exp(-α) ≈ 0   (peso mínimo)
+    IMPORTANTE: Los pesos W(Y) se calculan con datos ABSOLUTOS (no normalizados)
+    para mantener magnitudes físicamente correctas. El error se calcula con
+    datos normalizados para estabilidad numérica.
+    
+    - Cuando avg(pred_abs,target_abs) ≈ max(target_abs):  W ≈ exp(0) = 1.0  (peso máximo)
+    - Cuando avg(pred_abs,target_abs) ≈ 0:               W ≈ exp(-α) ≈ 0   (peso mínimo)
     
     Un solo hiperparámetro α controla la agresividad del enfoque.
     α grande → ignora más las zonas de baja dosis
@@ -116,25 +120,27 @@ class ExponentialWeightedLoss(nn.Module):
         super().__init__()
         self.alpha = alpha
 
-    def forward(self, pred, target):
-        # Máscara: solo donde target > 0 (ignora 96% vacío)
-        mask = target > 0
+    def forward(self, pred_norm, target_norm, pred_abs, target_abs):
+        # Máscara: solo donde target_abs > 0 (ignora 96% vacío)
+        mask = target_abs > 0
         n_active = mask.sum()
         
         if n_active == 0:
-            return torch.tensor(0.0, device=pred.device, requires_grad=True), {
+            return torch.tensor(0.0, device=pred_norm.device, requires_grad=True), {
                 'total': 0, 'n_active': 0, 'w_mean': 0, 'w_max': 0, 'w_min': 0
             }
         
-        max_dose = target.max().detach()
+        max_dose = target_abs.max().detach()
         
-        # W(Y) = exp[-α * (1 - 0.5*(Ŷ + Y) / max(Y))]
-        avg_dose = 0.5 * (pred + target)
-        ratio = avg_dose / (max_dose + 1e-8)
+        # W(Y) = exp[-α * (1 - 0.5*(Ŷ_abs + Y_abs) / max(Y_abs))]
+        # Los pesos se calculan con datos ABSOLUTOS para magnitudes correctas
+        avg_dose_abs = 0.5 * (pred_abs + target_abs)
+        ratio = avg_dose_abs / (max_dose + 1e-8)
         weights = torch.exp(-self.alpha * (1.0 - ratio))
         
-        # MSE ponderado solo en voxels activos
-        error = (pred - target) ** 2
+        # MSE ponderado con datos NORMALIZADOS (para estabilidad)
+        # pero pesos calculados en escala absoluta
+        error = (pred_norm - target_norm) ** 2
         weighted_error = (error * weights)[mask]
         loss = weighted_error.mean()
         
@@ -285,7 +291,10 @@ def train_epoch(model, dataloader, optimizer, loss_fn, device, epoch):
         optimizer.zero_grad()
         # ⚡ RESIDUAL: model(input) = input + corrección
         pred_norm = model(input_norm)
-        loss, loss_stats = loss_fn(pred_norm, target_norm)
+        # Desdenormalizar predicción para calcular pesos (pred_abs = pred_norm * max_dose)
+        pred_abs = pred_norm * max_dose_view
+        target_abs = target_data  # Ya están en escala absoluta
+        loss, loss_stats = loss_fn(pred_norm, target_norm, pred_abs, target_abs)
 
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -318,7 +327,9 @@ def validate(model, dataloader, loss_fn, device, epoch):
             target_norm = target_data / max_dose_view
 
             pred_norm = model(input_norm)
-            loss, _ = loss_fn(pred_norm, target_norm)
+            pred_abs = pred_norm * max_dose_view
+            target_abs = target_data
+            loss, _ = loss_fn(pred_norm, target_norm, pred_abs, target_abs)
             total_loss += loss.item()
             pbar.set_postfix(loss=f'{loss.item():.6f}')
 
