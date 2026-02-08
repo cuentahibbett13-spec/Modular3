@@ -224,6 +224,89 @@ def calc_dose_metrics(pred, target, max_dose):
     
     return results
 
+def calc_advanced_metrics(pred, target, max_dose):
+    """Métricas avanzadas para evaluación de dosis"""
+    results = {}
+    
+    # 1. Normalized Cross-Correlation (NCC)
+    pred_flat = pred.flatten()
+    target_flat = target.flatten()
+    ncc = np.corrcoef(pred_flat, target_flat)[0, 1]
+    results['ncc'] = float(ncc) if not np.isnan(ncc) else 0.0
+    
+    # 2. Mean Dose comparison
+    mean_pred = np.mean(pred)
+    mean_target = np.mean(target)
+    mean_dose_error = abs(mean_pred - mean_target) / mean_target * 100 if mean_target > 0 else 0
+    results['mean_dose_error_%'] = float(mean_dose_error)
+    
+    # 3. Max Dose comparison
+    max_pred = np.max(pred)
+    max_target = np.max(target)
+    max_dose_error = abs(max_pred - max_target) / max_target * 100 if max_target > 0 else 0
+    results['max_dose_error_%'] = float(max_dose_error)
+    
+    # 4. PDD Curve similarity (depth dose)
+    z_size = pred.shape[0]
+    pdd_pred = np.array([pred[z].max() for z in range(z_size)])
+    pdd_target = np.array([target[z].max() for z in range(z_size)])
+    
+    pdd_mae = np.mean(np.abs(pdd_pred - pdd_target))
+    pdd_rel_error = np.mean(np.abs(pdd_pred - pdd_target) / (pdd_target + 1e-10)) * 100
+    
+    results['pdd_mae'] = float(pdd_mae)
+    results['pdd_rel_error_%'] = float(pdd_rel_error)
+    results['pdd_corr'] = float(np.corrcoef(pdd_pred, pdd_target)[0, 1])
+    
+    # 5. Isodose volume comparison (volúmenes a diferentes niveles)
+    isodose_levels = [0.95, 0.90, 0.80, 0.50, 0.20]  # 95%, 90%, etc. of max dose
+    isodose_metrics = {}
+    
+    for level in isodose_levels:
+        threshold = level * max_dose
+        vol_pred = np.sum(pred >= threshold)
+        vol_target = np.sum(target >= threshold)
+        
+        if vol_target > 0:
+            vol_error = abs(vol_pred - vol_target) / vol_target * 100
+            isodose_metrics[f'V{int(level*100)}%'] = {
+                'pred_voxels': int(vol_pred),
+                'target_voxels': int(vol_target),
+                'volume_error_%': float(vol_error)
+            }
+    
+    results['isodose_volumes'] = isodose_metrics
+    
+    # 6. Gamma Analysis (simplified 3D)
+    mask_significant = target > 0.10 * max_dose  # Solo en región de alta dosis
+    if mask_significant.sum() > 0:
+        gamma_pass_rate = calc_gamma_pass_rate(pred, target, mask_significant)
+        results['gamma_pass_rate_%'] = float(gamma_pass_rate)
+    else:
+        results['gamma_pass_rate_%'] = 0.0
+    
+    return results
+
+def calc_gamma_pass_rate(pred, target, mask, dose_tolerance=3.0, distance_tolerance=3.0):
+    """
+    Simplified Gamma Analysis - % of voxels passing gamma < 1
+    dose_tolerance: % de tolerancia en dosis
+    distance_tolerance: mm de tolerancia espacial (asumimos voxels de 1mm)
+    """
+    pred_masked = pred[mask]
+    target_masked = target[mask]
+    
+    # Diferencia de dosis normalizada
+    dose_diff = np.abs(pred_masked - target_masked)
+    dose_gamma = dose_diff / (dose_tolerance / 100.0 * target_masked.max())
+    
+    # Simplificación: Solo gamma de dosis (sin distancia espacial completa)
+    # Para gamma completo necesitaríamos calcular distancias 3D
+    gamma_values = dose_gamma  # Versión simplificada
+    
+    pass_rate = np.sum(gamma_values <= 1.0) / len(gamma_values) * 100
+    return pass_rate
+
 # ============================================================================
 # VISUALIZACIÓN
 # ============================================================================
@@ -394,16 +477,21 @@ def main():
             # Métricas por zona de dosis
             dose_metrics = calc_dose_metrics(pred_vol, target_vol, max_dose)
             
+            # Métricas avanzadas
+            advanced_metrics = calc_advanced_metrics(pred_vol, target_vol, max_dose)
+            
             key = f"{pair_dir.name}_{level}"
             all_metrics[key] = {
                 'psnr_input': float(psnr_input),
                 'psnr_pred': float(psnr_pred),
                 'psnr_gain_dB': float(psnr_pred - psnr_input),
                 'ssim_pred': float(ssim_pred),
-                'dose_zones': dose_metrics
+                'dose_zones': dose_metrics,
+                'advanced': advanced_metrics
             }
             
             print(f"PSNR: {psnr_input:.1f} → {psnr_pred:.1f} dB (gain: +{psnr_pred-psnr_input:.1f} dB)")
+            print(f"SSIM: {ssim_pred:.4f}")
             
             # Visualizaciones
             # DEBUG: Verificar dimensiones ANTES de plot_comparison
@@ -445,6 +533,16 @@ def main():
         print(f"    PSNR:  {m['psnr_input']:.1f} → {m['psnr_pred']:.1f} dB  (gain: +{m['psnr_gain_dB']:.1f} dB)")
         if m['ssim_pred'] > 0:
             print(f"    SSIM:  {m['ssim_pred']:.4f}")
+        
+        # Métricas avanzadas
+        adv = m['advanced']
+        print(f"    NCC:   {adv['ncc']:.4f}")
+        print(f"    Mean dose error: {adv['mean_dose_error_%']:.1f}%")
+        print(f"    Max dose error:  {adv['max_dose_error_%']:.1f}%")
+        print(f"    PDD correlation: {adv['pdd_corr']:.4f}")
+        if adv['gamma_pass_rate_%'] > 0:
+            print(f"    Gamma pass rate: {adv['gamma_pass_rate_%']:.1f}%")
+        
         psnr_gains.append(m['psnr_gain_dB'])
         
         for zone, zm in m['dose_zones'].items():
