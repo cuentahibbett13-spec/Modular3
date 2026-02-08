@@ -118,32 +118,25 @@ def sliding_window_inference(model, volume, device, patch_size=96, overlap=16):
             w[:, :, -(i+1)] *= fade
     
     positions = []
-    for zs in range(0, pz - patch_size + 1, step):
-        for ys in range(0, py - patch_size + 1, step):
-            for xs in range(0, px - patch_size + 1, step):
-                positions.append((zs, ys, xs))
     
-    # Ensure coverage of edges - force last patches if needed
-    if positions:
-        last_z, last_y, last_x = positions[-1]
-        if last_z + patch_size < pz:
-            # Add final patches for z dimension
-            for ys in range(0, py - patch_size + 1, step):
-                for xs in range(0, px - patch_size + 1, step):
-                    positions.append((pz - patch_size, ys, xs))
-        if last_y + patch_size < py:
-            # Add final patches for y dimension  
-            for zs in range(0, pz - patch_size + 1, step):
-                for xs in range(0, px - patch_size + 1, step):
-                    positions.append((zs, py - patch_size, xs))
-        if last_x + patch_size < px:
-            # Add final patches for x dimension
-            for zs in range(0, pz - patch_size + 1, step):
-                for ys in range(0, py - patch_size + 1, step):
-                    positions.append((zs, ys, px - patch_size))
-        
-        # Corner patches
-        positions.append((pz - patch_size, py - patch_size, px - patch_size))
+    # Generate all positions with proper edge handling
+    for zs in range(0, pz, step):
+        for ys in range(0, py, step):
+            for xs in range(0, px, step):
+                # Ensure we don't go beyond volume bounds
+                z_end = min(zs + patch_size, pz)
+                y_end = min(ys + patch_size, py)
+                x_end = min(xs + patch_size, px)
+                
+                # Adjust start if patch would be too small at edge
+                if z_end - zs < patch_size:
+                    zs = max(0, z_end - patch_size)
+                if y_end - ys < patch_size:
+                    ys = max(0, y_end - patch_size)  
+                if x_end - xs < patch_size:
+                    xs = max(0, x_end - patch_size)
+                
+                positions.append((zs, ys, xs))
     
     # Remove duplicates while preserving order
     seen = set()
