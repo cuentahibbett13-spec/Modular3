@@ -123,6 +123,37 @@ def sliding_window_inference(model, volume, device, patch_size=96, overlap=16):
             for xs in range(0, px - patch_size + 1, step):
                 positions.append((zs, ys, xs))
     
+    # Ensure coverage of edges - force last patches if needed
+    if positions:
+        last_z, last_y, last_x = positions[-1]
+        if last_z + patch_size < pz:
+            # Add final patches for z dimension
+            for ys in range(0, py - patch_size + 1, step):
+                for xs in range(0, px - patch_size + 1, step):
+                    positions.append((pz - patch_size, ys, xs))
+        if last_y + patch_size < py:
+            # Add final patches for y dimension  
+            for zs in range(0, pz - patch_size + 1, step):
+                for xs in range(0, px - patch_size + 1, step):
+                    positions.append((zs, py - patch_size, xs))
+        if last_x + patch_size < px:
+            # Add final patches for x dimension
+            for zs in range(0, pz - patch_size + 1, step):
+                for ys in range(0, py - patch_size + 1, step):
+                    positions.append((zs, ys, px - patch_size))
+        
+        # Corner patches
+        positions.append((pz - patch_size, py - patch_size, px - patch_size))
+    
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_positions = []
+    for pos in positions:
+        if pos not in seen:
+            seen.add(pos)
+            unique_positions.append(pos)
+    positions = unique_positions
+    
     with torch.no_grad():
         for zs, ys, xs in tqdm(positions, desc="  Inference", leave=False):
             patch = padded[zs:zs+patch_size, ys:ys+patch_size, xs:xs+patch_size]
