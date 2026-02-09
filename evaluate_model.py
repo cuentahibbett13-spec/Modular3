@@ -547,13 +547,16 @@ def main():
         print(f"    Mean dose error: {adv['mean_dose_error_%']:.1f}%")
         print(f"    Max dose error:  {adv['max_dose_error_%']:.1f}%")
         print(f"    PDD correlation: {adv['pdd_corr']:.4f}")
-        if adv['gamma_pass_rate_%'] > 0:
-            gamma_input = adv.get('gamma_pass_rate_input_%', 0)
-            gamma_pred = adv['gamma_pass_rate_%']
-            if gamma_input > 0:
-                print(f"    Gamma pass rate: input={gamma_input:.1f}% → pred={gamma_pred:.1f}% (mejora: +{gamma_pred-gamma_input:.1f}%)")
-            else:
-                print(f"    Gamma pass rate: {gamma_pred:.1f}%")
+        
+        # Gamma pass rate comparison
+        gamma_pred = adv.get('gamma_pass_rate_%', 0)
+        gamma_input = adv.get('gamma_pass_rate_input_%', None)
+        
+        if gamma_input is not None and gamma_input >= 0:
+            mejora = gamma_pred - gamma_input
+            print(f"    Gamma pass rate: input={gamma_input:.1f}% → pred={gamma_pred:.1f}% (mejora: +{mejora:.1f}%)")
+        elif gamma_pred > 0:
+            print(f"    Gamma pass rate: {gamma_pred:.1f}%")
         
         psnr_gains.append(m['psnr_gain_dB'])
         
