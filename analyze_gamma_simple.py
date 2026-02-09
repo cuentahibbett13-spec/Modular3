@@ -91,6 +91,30 @@ def main():
         voxels_pct = voxels_above / target_vol.size * 100
         print(f"    p{p:2d}: {val:10.4f} ({pct_of_max:5.1f}% del máx) - {voxels_above:,} voxels arriba ({voxels_pct:5.1f}%)")
     
+    # Definir máscaras ANTES de usar en análisis de inputs
+    print(f"\n[1c] MÁSCARAS DEFINIDAS (basadas en target):")
+    masks = {
+        "10%": target_vol > 0.10 * max_dose,
+        "5%": target_vol > 0.05 * max_dose,
+        "1%": target_vol > 0.01 * max_dose,
+        "0%" : target_vol > 0,
+    }
+    
+    print(f"\n  Cada máscara cubre:")
+    for mask_name, mask in masks.items():
+        voxels = mask.sum()
+        pct = voxels / mask.size * 100
+        
+        # Estadísticas del ground truth dentro de la máscara
+        if voxels > 0:
+            gt_in_mask = target_vol[mask]
+            gt_mean = gt_in_mask.mean()
+            gt_median = np.median(gt_in_mask)
+            gt_min = gt_in_mask.min()
+            gt_max = gt_in_mask.max()
+            
+            print(f"    → target > {mask_name:3s}: {voxels:,} voxels ({pct:5.1f}%) - GT min/median/mean/max = {gt_min:.4f} / {gt_median:.4f} / {gt_mean:.4f} / {gt_max:.4f}")
+    
     # Cargar todos los inputs
     inputs_data = {}
     for level in ["input_1M", "input_2M", "input_5M", "input_10M"]:
@@ -118,35 +142,8 @@ def main():
                     
                     print(f"    En zona > {mask_name:3s}: diff_mean={diff_in_mask.mean():.4f}, % dentro 3%={pct_within_3:.1f}%, dentro 5%={pct_within_5:.1f}%")
     
-    # Análisis de máscaras y su impacto en el ground truth
-    print(f"\n[3] ANÁLISIS DE MÁSCARAS (basadas en target):")
-    masks = {
-        "10%": target_vol > 0.10 * max_dose,
-        "5%": target_vol > 0.05 * max_dose,
-        "1%": target_vol > 0.01 * max_dose,
-        "0%" : target_vol > 0,
-    }
-    
-    print(f"\n  Cada máscara cubre:")
-    for mask_name, mask in masks.items():
-        voxels = mask.sum()
-        pct = voxels / mask.size * 100
-        threshold = float(mask_name.rstrip("%")) / 100 * max_dose if mask_name != "0%" else 0
-        
-        # Estadísticas del ground truth dentro de la máscara
-        if voxels > 0:
-            gt_in_mask = target_vol[mask]
-            gt_mean = gt_in_mask.mean()
-            gt_median = np.median(gt_in_mask)
-            gt_min = gt_in_mask.min()
-            gt_max = gt_in_mask.max()
-            
-            print(f"\n    → target > {mask_name:3s}:")
-            print(f"       Voxels: {voxels:,} ({pct:5.1f}% del volumen total)")
-            print(f"       GT en máscara - min/median/mean/max: {gt_min:.4f} / {gt_median:.4f} / {gt_mean:.4f} / {gt_max:.4f}")
-    
     # Gamma analysis para cada input con diferentes configs
-    print(f"\n[4] GAMMA PASS RATE POR INPUT:")
+    print(f"\n[3] GAMMA PASS RATE POR INPUT:")
     print(f"     (usando máscara 10%, que es la del código original)")
     
     mask = masks["10%"]
@@ -199,7 +196,7 @@ def main():
     print(f"╚════════════════════════════════════════════════════════════╝")
     
     # Análisis con diferentes máscaras
-    print(f"\n[5] GAMMA (input_10M) CON DIFERENTES MÁSCARAS:")
+    print(f"\n[4] GAMMA (input_10M) CON DIFERENTES MÁSCARAS:")
     print(f"     Gamma Index: 3% dosis (DoMax), 3mm espacial")
     print()
     
@@ -214,7 +211,7 @@ def main():
             print(f"  Máscara target > {mask_name:3s}: {gamma:6.1f}% pass rate ({voxels:,} voxels, {pct:.1f}%)")
     
     # Análisis del ruido
-    print(f"\n[6] ANÁLISIS DE RUIDO (vs Ground Truth):")
+    print(f"\n[5] ANÁLISIS DE RUIDO (vs Ground Truth):")
     for level in ["input_1M", "input_5M", "input_10M"]:
         if level not in inputs_data:
             continue
@@ -239,7 +236,7 @@ def main():
             print(f"    Nota: Tolerancia gamma 3% DoMax = {0.03*max_dose:.4f}")
             print(f"          → El ruido es MAYOR que la tolerancia")
     
-    print(f"\n[7] CONCLUSIONES:")
+    print(f"\n[6] CONCLUSIONES:")
     print(f"  • El gamma del input es 0% porque:")
     print(f"    1. La máscara es restrictiva (solo zona de alta dosis: 10% de max)")
     print(f"    2. La tolerancia (3% DoMax) es MUCHO más pequeña que el RMSE del ruido")
