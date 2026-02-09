@@ -39,26 +39,82 @@ def find_model_file():
     return None
 
 def find_export_data():
-    """Busca datos exportados en el cluster"""
+    """Busca datos exportados - prioriza evaluate_model.py sobre export_predictions.py"""
     
+    # 1. PRIORIDAD: Buscar datos de evaluate_model.py (.npy en evaluation/)
+    eval_dirs = [
+        Path("runs/denoising_v2_residual/evaluation"),
+        Path("runs/denoising/evaluation"),
+        Path("evaluation")
+    ]
+    
+    for eval_dir in eval_dirs:
+        if eval_dir.exists():
+            npy_files = list(eval_dir.glob("*.npy"))
+            if npy_files:
+                print(f"✓ Usando datos de evaluate_model.py: {eval_dir}")
+                return parse_evaluation_data(eval_dir)
+    
+    # 2. FALLBACK: Buscar exports/ de export_predictions.py
     exports_dir = Path("exports")
-    if not exports_dir.exists():
-        print("❌ Directorio 'exports' no encontrado")
-        return {}
+    if exports_dir.exists():
+        input_files = list(exports_dir.glob("*_input.npy"))
+        if input_files:
+            print(f"⚠️ Usando datos de export_predictions.py (pueden tener bordes incompletos): {exports_dir}")
+            return parse_exports_data(exports_dir)
     
-    # Buscar archivos .npy
-    input_files = list(exports_dir.glob("*_input.npy"))
-    
-    if not input_files:
-        print("❌ No se encontraron archivos *_input.npy")
-        return {}
-    
+    print("❌ No se encontraron datos .npy")
+    print("\n💡 Para generar datos:")
+    print("   python evaluate_model.py   # (RECOMENDADO - cobertura completa)")
+    print("   python export_predictions.py   # (fallback)")
+    return {}
+
+def parse_evaluation_data(eval_dir):
+    """Parsea datos generados por evaluate_model.py"""
     cases = {}
+    
+    # Buscar archivos por patrón: evaluation/{case}_input_{level}.npy
+    npy_files = list(eval_dir.glob("*.npy"))
+    
+    # Agrupar por caso y level
+    case_groups = {}
+    for npy_file in npy_files:
+        name = npy_file.stem
+        
+        # Parsear patrón: {case}_{type}_{level} (ej: "pair_021_input_1M")
+        parts = name.split('_')
+        if len(parts) >= 3:
+            # Ultimo parte es level (1M, 2M, etc)
+            level = parts[-1]
+            type_name = parts[-2]  # input, pred, target
+            case_name = '_'.join(parts[:-2])  # resto es case name
+            
+            key = f"{case_name}_{level}"
+            
+            if key not in case_groups:
+                case_groups[key] = {}
+                
+            case_groups[key][type_name] = str(npy_file)
+    
+    # Validar casos completos
+    for case_key, files in case_groups.items():
+        if all(t in files for t in ['input', 'pred', 'target']):
+            cases[case_key] = files
+            print(f"✓ Encontrado caso completo: {case_key}")
+        else:
+            missing = [t for t in ['input', 'pred', 'target'] if t not in files]
+            print(f"⚠️ Caso incompleto {case_key}, faltan: {missing}")
+    
+    return cases
+
+def parse_exports_data(exports_dir):
+    """Parsea datos generados por export_predictions.py (legacy)"""
+    cases = {}
+    input_files = list(exports_dir.glob("*_input.npy"))
     
     for input_file in input_files:
         case_name = input_file.stem.replace("_input", "")
         
-        # Archivos asociados
         pred_file = exports_dir / f"{case_name}_pred.npy"
         target_file = exports_dir / f"{case_name}_target.npy"
         
@@ -68,7 +124,7 @@ def find_export_data():
                 'pred': str(pred_file),
                 'target': str(target_file)
             }
-            print(f"✓ Encontrado caso: {case_name}")
+            print(f"✓ Encontrado caso (legacy): {case_name}")
         else:
             print(f"⚠️ Caso incompleto: {case_name}")
     
@@ -396,7 +452,10 @@ def main():
     
     if not cases:
         print("❌ No se encontraron datos para analizar")
-        print("\n💡 Para generar datos:")
+        print("\n💡 Para generar datos (RECOMENDADO):")
+        print("   python evaluate_model.py")
+        print("   # Genera archivos .npy con cobertura completa del volumen")
+        print("\n💡 Alternativa (puede tener bordes incompletos):")
         print("   python export_predictions.py")
         return
     

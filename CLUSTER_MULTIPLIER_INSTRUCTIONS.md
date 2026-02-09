@@ -13,12 +13,15 @@ Si fuera solo un multiplicador:
 
 ### Prerrequisitos
 ```bash
-# 1. Datos exportados (generar si no existen)
-python export_predictions.py
+# 1. Datos exportados (RECOMENDADO - cobertura completa)
+python evaluate_model.py
 
-# 2. Verificar estructura
-ls exports/
-# Debe contener: *_input.npy, *_pred.npy, *_target.npy
+# 2. Verificar estructura 
+ls runs/*/evaluation/*.npy
+# Debe contener: {case}_input_{level}.npy, {case}_pred_{level}.npy, {case}_target_{level}.npy
+
+# ALTERNATIVA (puede tener bordes incompletos):
+# python export_predictions.py && ls exports/
 ```
 
 ### Comando Principal
@@ -87,9 +90,22 @@ python verify_cluster_multiplier.py \
 
 ### Error: No se encontraron datos
 ```bash
-# Generar primero los exports
+# MÉTODO RECOMENDADO (cobertura completa)
+python evaluate_model.py
+
+# Verificar que se generaron los .npy
+ls runs/*/evaluation/*.npy
+
+# Si falla, usar método legacy (bordes incompletos)
 python export_predictions.py
+ls exports/*.npy
 ```
+
+### ⚠️ Diferencia crítica entre métodos:
+- **`evaluate_model.py`**: Sliding window con **cobertura completa** de bordes
+- **`export_predictions.py`**: Sliding window **defectuoso** - deja regiones sin procesar
+
+**Síntoma del bug:** "Cuadrado en esquina superior izquierda" = solo se procesó parte del volumen
 
 ### Error: No se encontró modelo
 ```bash
