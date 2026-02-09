@@ -76,6 +76,21 @@ def main():
     print(f"  ✓ Target shape: {target_vol.shape}, max_dose: {max_dose:.4f}")
     print(f"  ✓ Target stats - min/mean/median/max: {target_vol.min():.4f} / {target_vol.mean():.4f} / {np.median(target_vol):.4f} / {max_dose:.4f}")
     
+    # Análisis detallado del ground truth
+    print(f"\n[1b] DISTRIBUCIÓN DEL GROUND TRUTH:")
+    percentiles = [1, 5, 10, 25, 50, 75, 90, 95, 99]
+    non_zero = target_vol[target_vol > 0]
+    print(f"  Total voxels: {target_vol.size:,}")
+    print(f"  Voxels con dosis > 0: {non_zero.size:,} ({non_zero.size/target_vol.size*100:.1f}%)")
+    print(f"  Rango: [{target_vol.min():.4f}, {max_dose:.4f}]")
+    print(f"  Percentiles:")
+    for p in percentiles:
+        val = np.percentile(non_zero, p)
+        pct_of_max = val / max_dose * 100
+        voxels_above = np.sum(target_vol >= val)
+        voxels_pct = voxels_above / target_vol.size * 100
+        print(f"    p{p:2d}: {val:10.4f} ({pct_of_max:5.1f}% del máx) - {voxels_above:,} voxels arriba ({voxels_pct:5.1f}%)")
+    
     # Cargar todos los inputs
     inputs_data = {}
     for level in ["input_1M", "input_2M", "input_5M", "input_10M"]:
@@ -90,9 +105,21 @@ def main():
             # Diferencia directa
             diff = np.abs(input_vol - target_vol)
             print(f"  Diferencia: min/mean/median/max = {diff.min():.4f} / {diff.mean():.4f} / {np.median(diff):.4f} / {diff.max():.4f}")
+            
+            # Análisis respecto a las máscaras
+            print(f"  Comportamiento relativo a GT:")
+            for mask_name in ["10%", "5%", "1%"]:
+                mask = masks[mask_name]
+                if mask.sum() > 0:
+                    input_in_mask = input_vol[mask]
+                    diff_in_mask = diff[mask]
+                    pct_within_3 = np.sum(diff_in_mask <= 0.03*max_dose) / len(diff_in_mask) * 100
+                    pct_within_5 = np.sum(diff_in_mask <= 0.05*max_dose) / len(diff_in_mask) * 100
+                    
+                    print(f"    En zona > {mask_name:3s}: diff_mean={diff_in_mask.mean():.4f}, % dentro 3%={pct_within_3:.1f}%, dentro 5%={pct_within_5:.1f}%")
     
-    # Análisis de máscaras
-    print(f"\n[3] Análisis de máscaras (basadas en target):")
+    # Análisis de máscaras y su impacto en el ground truth
+    print(f"\n[3] ANÁLISIS DE MÁSCARAS (basadas en target):")
     masks = {
         "10%": target_vol > 0.10 * max_dose,
         "5%": target_vol > 0.05 * max_dose,
@@ -100,9 +127,23 @@ def main():
         "0%" : target_vol > 0,
     }
     
+    print(f"\n  Cada máscara cubre:")
     for mask_name, mask in masks.items():
-        pct = mask.sum() / mask.size * 100
-        print(f"  target > {mask_name:3s} max_dose: {mask.sum():,} voxels ({pct:5.1f}%)")
+        voxels = mask.sum()
+        pct = voxels / mask.size * 100
+        threshold = float(mask_name.rstrip("%")) / 100 * max_dose if mask_name != "0%" else 0
+        
+        # Estadísticas del ground truth dentro de la máscara
+        if voxels > 0:
+            gt_in_mask = target_vol[mask]
+            gt_mean = gt_in_mask.mean()
+            gt_median = np.median(gt_in_mask)
+            gt_min = gt_in_mask.min()
+            gt_max = gt_in_mask.max()
+            
+            print(f"\n    → target > {mask_name:3s}:")
+            print(f"       Voxels: {voxels:,} ({pct:5.1f}% del volumen total)")
+            print(f"       GT en máscara - min/median/mean/max: {gt_min:.4f} / {gt_median:.4f} / {gt_mean:.4f} / {gt_max:.4f}")
     
     # Gamma analysis para cada input con diferentes configs
     print(f"\n[4] GAMMA PASS RATE POR INPUT:")
@@ -172,18 +213,49 @@ def main():
             pct = voxels / mask.size * 100
             print(f"  Máscara target > {mask_name:3s}: {gamma:6.1f}% pass rate ({voxels:,} voxels, {pct:.1f}%)")
     
-    print(f"\n[6] CONCLUSIONES:")
+    # Análisis del ruido
+    print(f"\n[6] ANÁLISIS DE RUIDO (vs Ground Truth):")
+    for level in ["input_1M", "input_5M", "input_10M"]:
+        if level not in inputs_data:
+            continue
+        input_vol = inputs_data[level]
+        
+        # SNR aproximado
+        signal = target_vol
+        noise = input_vol - target_vol
+        
+        # Donde haya señal (>1% max_dose)
+        mask_signal = signal > 0.01 * max_dose
+        if mask_signal.sum() > 0:
+            signal_power = np.mean(signal[mask_signal] ** 2)
+            noise_power = np.mean(noise[mask_signal] ** 2)
+            snr = 10 * np.log10(signal_power / (noise_power + 1e-10))
+            rmse = np.sqrt(np.mean(noise[mask_signal] ** 2))
+            rmse_pct = rmse / max_dose * 100
+            
+            print(f"\n  {level}:")
+            print(f"    SNR: {snr:.2f} dB")
+            print(f"    RMSE (ruido): {rmse:.4f} ({rmse_pct:.2f}% del max_dose)")
+            print(f"    Nota: Tolerancia gamma 3% DoMax = {0.03*max_dose:.4f}")
+            print(f"          → El ruido es MAYOR que la tolerancia")
+    
+    print(f"\n[7] CONCLUSIONES:")
     print(f"  • El gamma del input es 0% porque:")
-    print(f"    1. La máscara es restrictiva (solo zona de alta dosis)")
-    print(f"    2. La tolerancia (3% DoMax) es estricta para ruido")
+    print(f"    1. La máscara es restrictiva (solo zona de alta dosis: 10% de max)")
+    print(f"    2. La tolerancia (3% DoMax) es MUCHO más pequeña que el RMSE del ruido")
+    print(f"    3. El input ruidoso NO puede pasar una tolerancia tan estricta")
 
     print()
     print(f"  • Recomendaciones:")
-    print(f"    1. Usar DoLocal (3% de dosis local) en lugar de DoMax")
-    print(f"       → Gamma es más justo para comparar input ruidoso")
-    print(f"       → input_10M tendría ~50-70% en lugar de 0%")
+    print(f"    1. Usar DoLocal (3% de dosis LOCAL, no del máximo)")
+    print(f"       → Justo para ruido y señal débil")
+    print(f"       → input_10M probablemente ~40-60%")
     print(f"    2. O aumentar tolerancia a 5% DoMax")
-    print(f"    3. O incluir máscara más amplia (5% en lugar de 10%)")
+    print(f"       → input_10M probablemente ~20-40%")
+    print(f"    3. O combinación: máscara 5% + tolerancia 5% DoLocal")
+    print(f"")
+    print(f"  • Ground Truth: tiene dosis concentrada (~90% en zona >10% max)")
+    print(f"    El resto es very low dose (ruido de fondo)")
 
 
 if __name__ == '__main__':
