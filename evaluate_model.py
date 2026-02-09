@@ -224,7 +224,7 @@ def calc_dose_metrics(pred, target, max_dose):
     
     return results
 
-def calc_advanced_metrics(pred, target, max_dose):
+def calc_advanced_metrics(pred, target, max_dose, input_vol=None):
     """Métricas avanzadas para evaluación de dosis"""
     results = {}
     
@@ -282,8 +282,15 @@ def calc_advanced_metrics(pred, target, max_dose):
     if mask_significant.sum() > 0:
         gamma_pass_rate = calc_gamma_pass_rate(pred, target, mask_significant)
         results['gamma_pass_rate_%'] = float(gamma_pass_rate)
+        
+        # Calcular gamma también para input si se proporciona
+        if input_vol is not None:
+            gamma_pass_rate_input = calc_gamma_pass_rate(input_vol, target, mask_significant)
+            results['gamma_pass_rate_input_%'] = float(gamma_pass_rate_input)
     else:
         results['gamma_pass_rate_%'] = 0.0
+        if input_vol is not None:
+            results['gamma_pass_rate_input_%'] = 0.0
     
     return results
 
@@ -478,7 +485,7 @@ def main():
             dose_metrics = calc_dose_metrics(pred_vol, target_vol, max_dose)
             
             # Métricas avanzadas
-            advanced_metrics = calc_advanced_metrics(pred_vol, target_vol, max_dose)
+            advanced_metrics = calc_advanced_metrics(pred_vol, target_vol, max_dose, input_vol=input_vol)
             
             key = f"{pair_dir.name}_{level}"
             all_metrics[key] = {
@@ -541,7 +548,12 @@ def main():
         print(f"    Max dose error:  {adv['max_dose_error_%']:.1f}%")
         print(f"    PDD correlation: {adv['pdd_corr']:.4f}")
         if adv['gamma_pass_rate_%'] > 0:
-            print(f"    Gamma pass rate: {adv['gamma_pass_rate_%']:.1f}%")
+            gamma_input = adv.get('gamma_pass_rate_input_%', 0)
+            gamma_pred = adv['gamma_pass_rate_%']
+            if gamma_input > 0:
+                print(f"    Gamma pass rate: input={gamma_input:.1f}% → pred={gamma_pred:.1f}% (mejora: +{gamma_pred-gamma_input:.1f}%)")
+            else:
+                print(f"    Gamma pass rate: {gamma_pred:.1f}%")
         
         psnr_gains.append(m['psnr_gain_dB'])
         
