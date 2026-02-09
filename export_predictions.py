@@ -95,14 +95,22 @@ def sliding_window_inference(model, volume, patch_size=96, overlap=16):
             w[:, :, -(i+1)] *= fade
     
     with torch.no_grad():
-        for zs in range(0, pz - patch_size + 1, step):
-            for ys in range(0, py - patch_size + 1, step):
-                for xs in range(0, px - patch_size + 1, step):
+        zs_starts = list(range(0, pz - patch_size + 1, step))
+        if zs_starts[-1] != pz - patch_size:
+            zs_starts.append(pz - patch_size)
+        ys_starts = list(range(0, py - patch_size + 1, step))
+        if ys_starts[-1] != py - patch_size:
+            ys_starts.append(py - patch_size)
+        xs_starts = list(range(0, px - patch_size + 1, step))
+        if xs_starts[-1] != px - patch_size:
+            xs_starts.append(px - patch_size)
+
+        for zs in zs_starts:
+            for ys in ys_starts:
+                for xs in xs_starts:
                     patch = padded[zs:zs+patch_size, ys:ys+patch_size, xs:xs+patch_size]
                     patch_tensor = torch.from_numpy(patch).unsqueeze(0).unsqueeze(0).float().to(device)
-                    
                     pred_patch = model(patch_tensor).squeeze().cpu().numpy()
-                    
                     output[zs:zs+patch_size, ys:ys+patch_size, xs:xs+patch_size] += pred_patch * w
                     weight_map[zs:zs+patch_size, ys:ys+patch_size, xs:xs+patch_size] += w
     
