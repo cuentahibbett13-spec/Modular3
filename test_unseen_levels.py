@@ -17,6 +17,8 @@ import SimpleITK as sitk
 import torch
 import torch.nn as nn
 
+torch.backends.cudnn.enabled = False
+
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -300,9 +302,18 @@ def main():
     # Inference
     print(f"\n[3/4] Running inference...")
     input_norm = input_vol / (max_dose + 1e-8)
+    
+    # DEBUG: Verificar rangos normalizados
+    print(f"  input_norm: min={input_norm.min():.6f}, max={input_norm.max():.6f}, mean={input_norm.mean():.6f}")
+    print(f"  Ratio input_max/target_max = {input_vol.max()/max_dose:.4f}")
+    print(f"  (En training, 1M tiene ratio ~0.034, 10M tiene ratio ~0.34)")
+    
     pred_norm = sliding_window_inference(model, input_norm, device, args.patch_size, args.overlap)
     pred_vol = pred_norm * max_dose
+    
+    print(f"  pred_norm: min={pred_norm.min():.6f}, max={pred_norm.max():.6f}, mean={pred_norm.mean():.6f}")
     print(f"  Prediction: {pred_vol.shape}, max={pred_vol.max():.4f}")
+    print(f"  Target max: {max_dose:.4f}")
     
     # Metrics
     print(f"\n[4/4] Computing metrics...")
