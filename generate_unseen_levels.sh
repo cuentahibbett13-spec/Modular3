@@ -17,6 +17,7 @@ SCRIPT_SIM="simulations/dose_simulation.py"
 # Formato: "label:n_particles:seed"
 LEVELS=(
     "100k:100000:80001"
+    "1.5M:1500000:80002"
 )
 
 # Target (usar el target_1 existente para comparación)

@@ -33,7 +33,7 @@ DATASET_ROOT = Path("dataset_pilot")
 VAL_DIR = DATASET_ROOT / "val"
 EVAL_DIR = Path("runs/denoising_v2_residual/evaluation")
 EVAL_DIR.mkdir(parents=True, exist_ok=True)
-INPUT_LEVELS = ["input_100k", "input_1M", "input_2M", "input_5M", "input_10M"]
+INPUT_LEVELS = ["input_100k", "input_1M", "input_1.5M", "input_2M", "input_5M", "input_10M"]
 PATCH_SIZE = 96
 OVERLAP = 16  # Overlap entre parches para evitar artefactos de borde
 
